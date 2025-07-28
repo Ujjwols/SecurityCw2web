@@ -18,12 +18,6 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    dob: {
-      type: String,
-      required: true,
-      lowercase: true,
-      trim: true,
-    },
     email: {
       type: String,
       required: true,
