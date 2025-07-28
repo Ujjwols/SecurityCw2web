@@ -64,7 +64,6 @@ router.patch(
   verifyJWT,
   upload.fields([
     { name: "profilePic", maxCount: 1 },
-    { name: "additionalFile", maxCount: 1 },
   ]),
   updateUserController
 );
