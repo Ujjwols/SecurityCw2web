@@ -8,8 +8,6 @@ const {
   getUserByIdController,
   updateUserController,
   deleteUserController,
-  approveMembershipController,
-  declineMembershipController,
 } = require("../controller/userController");
 const verifyJWT = require("../middleware/authMiddleware");
 const verifyAdmin = require("../middleware/verifyAdmin");
@@ -54,8 +52,7 @@ router.get("/check-auth", verifyJWT, async (req, res) => {
 // Admin-only routes
 router.get("/get-all-users",getAllUsersController);
 router.delete("/delete-user/:id",deleteUserController);
-router.post("/approve-membership/:id",approveMembershipController);
-router.post("/decline-membership/:id",declineMembershipController);
+
 
 // Authenticated user routes
 router.get("/get-user/:id", verifyJWT, getUserByIdController);
