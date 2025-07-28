@@ -33,7 +33,6 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
 const registerUserController = asyncHandler(async (req, res) => {
   const {
     username,
-    mobileNumber,
     email,
     password,
   } = req.body;
@@ -42,23 +41,35 @@ const registerUserController = asyncHandler(async (req, res) => {
     username,
     email,
     password,
-    mobileNumber,
   };
 
-  for (const [key, value] of Object.entries(requiredFields)) {
-    if (!value && key !== "username" && key !== "email") {
+   for (const [key, value] of Object.entries(requiredFields)) {
+    if (!value) {
       throw new ApiError(400, `Field '${key}' is required`);
     }
   }
 
+
   const existingUser = await User.findOne({
-    $or: [{ username }, { email }, { mobileNumber }],
+    $or: [{ username }, { email }],
   });
 
   if (existingUser) {
     throw new ApiError(
       400,
       "User already exists with this employee ID, email, or phone number"
+    );
+  }
+
+  if (!email.endsWith("@gmail.com")) {
+    throw new ApiError(400, "Email must be a valid Gmail address");
+  }
+
+  const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/;
+  if (!passwordRegex.test(password)) {
+    throw new ApiError(
+      400,
+      "Password must be at least 6 characters long and include at least one capital letter, one number, and one special character"
     );
   }
 
@@ -129,9 +140,7 @@ const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
   if (!email || !password || !deliveryMethod) {
     throw new ApiError(400, "Email, password, and delivery method are required");
   }
-  if (!["sms", "email"].includes(deliveryMethod)) {
-    throw new ApiError(400, "Invalid delivery method. Use 'sms' or 'email'");
-  }
+
 
   const user = await User.findOne({ email });
   if (!user) {
@@ -147,61 +156,42 @@ const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid password");
   }
 
-  const identifier = deliveryMethod === "sms" ? user.mobileNumber : user.email;
+  const identifier = user.email;
   if (!identifier) {
-    throw new ApiError(
-      400,
-      `User does not have a ${deliveryMethod === "sms" ? "mobile number" : "email"} registered`
-    );
+    throw new ApiError(400, "User does not have an email registered");
   }
 
   try {
-    const { token, identifier: returnedIdentifier, deliveryMethod: returnedMethod, message } =
-      await sendOTPController({
-        identifier,
-        deliveryMethod,
-      });
+    const { token, identifier: returnedIdentifier, message } =
+      await sendOTPController({ identifier });
+
     return res
       .status(200)
-      .json(
-        new ApiResponse(
-          200,
-          { token, identifier: returnedIdentifier, deliveryMethod: returnedMethod },
-          message
-        )
-      );
+      .json(new ApiResponse(200, { token, identifier: returnedIdentifier }, message));
   } catch (error) {
-    throw new ApiError(
-      error.statusCode || 500,
-      error.message || "Failed to send OTP"
-    );
+    throw new ApiError(error.statusCode || 500, error.message || "Failed to send OTP");
   }
 });
 
 // Verify OTP and login
 const verifyUserOTPLogin = asyncHandler(async (req, res) => {
-  const { token, otp, deliveryMethod } = req.body;
+  const { token, otp } = req.body;
 
-  if (!token || !otp || !deliveryMethod) {
-    throw new ApiError(400, "Token, OTP, and delivery method are required");
-  }
-  if (!["sms", "email"].includes(deliveryMethod)) {
-    throw new ApiError(400, "Invalid delivery method. Use 'sms' or 'email'");
+  if (!token || !otp) {
+    throw new ApiError(400, "Token and OTP are required");
   }
 
   try {
     const { identifier, message } = await verifyOTPController({
       token,
       otp,
-      deliveryMethod,
     });
 
-    const user = await User.findOne(
-      deliveryMethod === "sms" ? { mobileNumber: identifier } : { email: identifier }
-    );
+    const user = await User.findOne({ email: identifier });
     if (!user) {
       throw new ApiError(404, "User not found");
     }
+
 
     if (req.headers["x-admin-frontend"] === "true" && user.role !== "admin") {
       throw new ApiError(403, "This interface is for admin users only");
