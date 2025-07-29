@@ -1,4 +1,5 @@
 const express = require("express");
+const csrfProtection = require("../middleware/csrfProtection");
 const {
   registerUserController,
   sendOTPVerificationLogin,
@@ -9,6 +10,7 @@ const {
   getUserByIdController,
   updateUserController,
   deleteUserController,
+  updatePasswordController,
 } = require("../controller/userController");
 
 const { verifyJWT, restrictTo } = require("../middleware/authMiddleware");
@@ -18,45 +20,36 @@ const ApiResponse = require("../utils/ApiResponse");
 const router = express.Router();
 
 // -------------------- Public Routes --------------------
-
-// Register user with profile picture
 router.post(
   "/register",
+  csrfProtection,
   upload.fields([{ name: "profilePic", maxCount: 1 }]),
   registerUserController
 );
 
-// OTP login initiation
-router.post("/send-otp", sendOTPVerificationLogin);
-
-// OTP login verification
-router.post("/verify-otp", verifyUserOTPLogin);
+router.post("/send-otp", csrfProtection, sendOTPVerificationLogin);
+router.post("/verify-otp", csrfProtection, verifyUserOTPLogin);
 
 // -------------------- Protected Routes (Logged-in Users) --------------------
-
-// Logout
-router.post("/logout", verifyJWT,logoutUserController);
-
-// Get current authenticated user
+router.post("/logout", verifyJWT, csrfProtection, logoutUserController);
 router.get("/get-current-user", verifyJWT, getCurrentUserController);
-
-// Get specific user by ID (accessible by the user themselves or admin if expanded later)
 router.get("/get-user/:id", verifyJWT, getUserByIdController);
-
-// Update user profile (with optional profilePic)
 router.patch(
   "/update-user/:id",
   verifyJWT,
   upload.fields([{ name: "profilePic", maxCount: 1 }]),
+  
   updateUserController
+);
+router.post(
+  "/update-password",
+  verifyJWT,
+  csrfProtection,
+  updatePasswordController
 );
 
 // -------------------- Admin-Only Routes --------------------
-
-// Get all users
 router.get("/get-all-users", verifyJWT, restrictTo("admin"), getAllUsersController);
-
-// Delete user
 router.delete("/delete-user/:id", verifyJWT, restrictTo("admin"), deleteUserController);
 
 // -------------------- Auth Check --------------------
