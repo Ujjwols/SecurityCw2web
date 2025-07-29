@@ -7,6 +7,8 @@ const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const { redisClient } = require("../utils/redisClient");
 const { body, validationResult } = require("express-validator");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
 const generateAccessTokenAndRefreshToken = async (userId) => {
   try {
@@ -18,7 +20,7 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
     const refreshToken = user.generateRefreshToken();
     
     if (user.refreshToken) {
-      await redisClient.set(`blacklist:${user.refreshToken}`, 'true', 'EX', 7 * 24 * 60 * 60);
+      await redisClient.set(`blacklist:${user.refreshToken}`, 'true', 'EX', parseInt(process.env.REFRESH_TOKEN_EXPIRY));
     }
     
     user.refreshToken = refreshToken;
@@ -32,11 +34,14 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
 
 const registerUserController = asyncHandler(async (req, res) => {
   await Promise.all([
-    body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters').run(req),
+    body('username').trim().escape().isLength({ min: 3 }).withMessage('Username must be at least 3 characters').run(req),
     body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
     body('password').matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/)
       .withMessage('Password must be at least 6 characters with one capital letter, one number, and one special character').run(req),
   ]);
+
+  console.log('Request body:', req.body); // Log for debugging
+  console.log('Request files:', req.files);
 
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -45,12 +50,9 @@ const registerUserController = asyncHandler(async (req, res) => {
 
   const { username, email, password } = req.body;
 
-  const existingUser = await User.findOne({
-    $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }],
-  });
-
+  const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
-    throw new ApiError(400, "User already exists with this username or email");
+    throw new ApiError(400, "User already exists with this email");
   }
 
   if (!email.toLowerCase().endsWith("@gmail.com")) {
@@ -79,9 +81,10 @@ const registerUserController = asyncHandler(async (req, res) => {
     email: email.toLowerCase(),
     password,
     profilePic: profilePicUrl,
+    passwordHistory: [{ password: await bcrypt.hash(password, 10), createdAt: new Date() }],
   });
 
-  const createdUser = await User.findById(user._id).select("-password -refreshToken");
+  const createdUser = await User.findById(user._id).select("-password -refreshToken -passwordHistory");
 
   return res
     .status(201)
@@ -89,10 +92,10 @@ const registerUserController = asyncHandler(async (req, res) => {
 });
 
 const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
+  
   await Promise.all([
     body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
     body('password').notEmpty().withMessage('Password is required').run(req),
-    body('deliveryMethod').notEmpty().withMessage('Delivery method is required').run(req),
   ]);
 
   const errors = validationResult(req);
@@ -100,7 +103,7 @@ const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
     throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
   }
 
-  const { email, password, deliveryMethod } = req.body;
+  const { email, password } = req.body;
 
   const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) {
@@ -157,8 +160,17 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
       throw new ApiError(403, "This interface is for admin users only");
     }
 
+    const passwordAgeDays = Math.floor(
+      (new Date().getTime() - new Date(user.passwordLastReset).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (passwordAgeDays > 90) {
+      return res.status(200).json(
+        new ApiResponse(200, { needsPasswordUpdate: true, userId: user._id }, "Password update required")
+      );
+    }
+
     const { accessToken, refreshToken } = await generateAccessTokenAndRefreshToken(user._id);
-    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken -passwordHistory");
 
     const options = {
       httpOnly: true,
@@ -189,6 +201,63 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
   }
 });
 
+const updatePasswordController = asyncHandler(async (req, res) => {
+  await Promise.all([
+    body('currentPassword').notEmpty().withMessage('Current password is required').run(req),
+    body('newPassword')
+      .matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/)
+      .withMessage('New password must be at least 6 characters with one capital letter, one number, and one special character')
+      .run(req),
+  ]);
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
+  }
+
+  const { userId, currentPassword, newPassword } = req.body;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.passwordAttempts >= 3) {
+    throw new ApiError(429, "Maximum password update attempts reached for this session");
+  }
+
+  const isCurrentPasswordValid = await user.isPasswordCorrect(currentPassword);
+  if (!isCurrentPasswordValid) {
+    user.passwordAttempts += 1;
+    await user.save({ validateBeforeSave: false });
+    throw new ApiError(400, "Current password is incorrect");
+  }
+
+  const isPasswordReused = await user.isPasswordInHistory(newPassword);
+  if (isPasswordReused) {
+    user.passwordAttempts += 1;
+    await user.save({ validateBeforeSave: false });
+    throw new ApiError(400, "New password cannot be the same as the previous two passwords");
+  }
+
+  user.password = newPassword;
+  user.passwordHistory.push({ password: await bcrypt.hash(newPassword, 10), createdAt: new Date() });
+  user.passwordLastReset = new Date();
+  user.passwordAttempts = 0;
+  if (user.refreshToken) {
+    await redisClient.set(`blacklist:${user.refreshToken}`, 'true', 'EX', parseInt(process.env.REFRESH_TOKEN_EXPIRY));
+    user.refreshToken = null;
+  }
+  if (user.passwordHistory.length > 3) {
+    user.passwordHistory = user.passwordHistory.slice(-3);
+  }
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password updated successfully"));
+});
+
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
   
@@ -210,6 +279,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     if (isBlacklisted) {
       throw new ApiError(401, "Refresh token has been revoked");
     }
+
+    console.log(`Refresh token used: userId=${decodedToken._id}, ip=${req.ip}, time=${new Date().toISOString()}`);
 
     const { accessToken, refreshToken: newRefreshToken } = await generateAccessTokenAndRefreshToken(user._id);
 
@@ -250,9 +321,10 @@ const logoutUserController = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ refreshToken });
   if (user) {
-    await redisClient.set(`blacklist:${refreshToken}`, 'true', 'EX', 7 * 24 * 60 * 60);
+    await redisClient.set(`blacklist:${refreshToken}`, 'true', 'EX', parseInt(process.env.REFRESH_TOKEN_EXPIRY));
     await redisClient.set(`blacklist:${req.cookies.accessToken}`, 'true', 'EX', parseInt(process.env.ACCESS_TOKEN_EXPIRY));
     user.refreshToken = null;
+    user.passwordAttempts = 0;
     await user.save({ validateBeforeSave: false });
   }
 
@@ -270,7 +342,7 @@ const logoutUserController = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUserController = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).select("-password -refreshToken");
+  const user = await User.findById(req.user._id).select("-password -refreshToken -passwordHistory");
   if (!user) {
     throw new ApiError(404, "User not found");
   }
@@ -282,7 +354,7 @@ const getCurrentUserController = asyncHandler(async (req, res) => {
 const getAllUsersController = asyncHandler(async (req, res) => {
   const { status } = req.query;
   const query = status ? { status } : {};
-  const users = await User.find(query).select("-password -refreshToken");
+  const users = await User.find(query).select("-password -refreshToken -passwordHistory");
 
   if (!users || users.length === 0) {
     throw new ApiError(404, "No users found");
@@ -296,7 +368,7 @@ const getAllUsersController = asyncHandler(async (req, res) => {
 const getUserByIdController = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const user = await User.findById(id).select("-password -refreshToken");
+  const user = await User.findById(id).select("-password -refreshToken -passwordHistory");
   if (!user) {
     throw new ApiError(404, "User not found");
   }
@@ -313,6 +385,7 @@ const updateUserController = asyncHandler(async (req, res) => {
   delete updateData.password;
   delete updateData.refreshToken;
   delete updateData.role;
+  delete updateData.passwordHistory;
 
   const user = await User.findById(id);
   if (!user) {
@@ -342,7 +415,7 @@ const updateUserController = asyncHandler(async (req, res) => {
   Object.assign(user, updateData);
   await user.save({ validateBeforeSave: true });
 
-  const updatedUser = await User.findById(id).select("-password -refreshToken");
+  const updatedUser = await User.findById(id).select("-password -refreshToken -passwordHistory");
 
   return res
     .status(200)
@@ -395,4 +468,5 @@ module.exports = {
   updateUserController,
   deleteUserController,
   refreshAccessToken,
+  updatePasswordController,
 };

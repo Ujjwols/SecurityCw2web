@@ -3,7 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const xss = require('xss-clean');
 const morgan = require('morgan');
+const csrfProtection = require('./middleware/csrfProtection');
 const { expressCspHeader, INLINE, NONE, SELF } = require('express-csp-header');
 
 const app = express();
@@ -12,6 +14,8 @@ const allowedOrigins = [
   process.env.CORS_ORIGIN || 'http://localhost:3000',
   process.env.USER_CORS_ORIGIN || 'http://localhost:5173',
 ].filter(Boolean);
+
+app.use(cookieParser());
 
 app.use(
   helmet({
@@ -58,6 +62,7 @@ const authLimiter = rateLimit({
 });
 app.use('/api/v1/user/login', authLimiter);
 app.use('/api/v1/user/refresh-token', authLimiter);
+app.use('/api/v1/user/update-password', authLimiter);
 
 app.use(
   morgan('combined', {
@@ -75,10 +80,11 @@ app.use(
       return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-frontend'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-frontend', 'X-CSRF-Token','x-csrf-token'],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 );
+
 
 app.use((req, res, next) => {
   res.on('finish', () => {
@@ -89,8 +95,35 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '16kb' }));
 app.use(express.urlencoded({ extended: true, limit: '16kb' }));
+
+app.use((req, res, next) => {
+  const sanitize = (obj, fieldsToSanitize) => {
+    if (!obj) return;
+    for (const key in obj) {
+      if (fieldsToSanitize.includes(key) && typeof obj[key] === 'string') {
+        const original = obj[key];
+        obj[key] = xss(obj[key]);
+        if (original !== obj[key]) {
+          console.log(`Sanitized ${key}: "${original}" -> "${obj[key]}"`);
+        }
+      } else if (typeof obj[key] === 'object') {
+        sanitize(obj[key], fieldsToSanitize);
+      }
+    }
+  };
+
+  const fieldsToSanitize = ['username'];
+  sanitize(req.body, fieldsToSanitize);
+  sanitize(req.query, fieldsToSanitize);
+  sanitize(req.params, fieldsToSanitize);
+
+  next();
+});
 app.use(express.static('public'));
-app.use(cookieParser());
+
+app.use('/api/v1/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 const userRouter = require('./routes/userRoutes');
 app.use('/api/v1/user', userRouter);
