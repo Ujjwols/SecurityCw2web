@@ -4,33 +4,62 @@ const {
   sendOTPVerificationLogin,
   verifyUserOTPLogin,
   logoutUserController,
+  getCurrentUserController,
   getAllUsersController,
   getUserByIdController,
   updateUserController,
   deleteUserController,
 } = require("../controller/userController");
-const verifyJWT = require("../middleware/authMiddleware");
-const verifyAdmin = require("../middleware/verifyAdmin");
+
+const { verifyJWT, restrictTo } = require("../middleware/authMiddleware");
 const upload = require("../middleware/multer");
-const ApiResponse= require("../utils/ApiResponse");
+const ApiResponse = require("../utils/ApiResponse");
 
 const router = express.Router();
 
-// Public routes
+// -------------------- Public Routes --------------------
+
+// Register user with profile picture
 router.post(
   "/register",
-  upload.fields([
-    { name: "profilePic", maxCount: 1 },
-    { name: "additionalFile", maxCount: 1 },
-  ]),
+  upload.fields([{ name: "profilePic", maxCount: 1 }]),
   registerUserController
 );
+
+// OTP login initiation
 router.post("/send-otp", sendOTPVerificationLogin);
+
+// OTP login verification
 router.post("/verify-otp", verifyUserOTPLogin);
 
-// Protected routes
-router.post("/logout", logoutUserController);
+// -------------------- Protected Routes (Logged-in Users) --------------------
 
+// Logout
+router.post("/logout", verifyJWT,logoutUserController);
+
+// Get current authenticated user
+router.get("/get-current-user", verifyJWT, getCurrentUserController);
+
+// Get specific user by ID (accessible by the user themselves or admin if expanded later)
+router.get("/get-user/:id", verifyJWT, getUserByIdController);
+
+// Update user profile (with optional profilePic)
+router.patch(
+  "/update-user/:id",
+  verifyJWT,
+  upload.fields([{ name: "profilePic", maxCount: 1 }]),
+  updateUserController
+);
+
+// -------------------- Admin-Only Routes --------------------
+
+// Get all users
+router.get("/get-all-users", verifyJWT, restrictTo("admin"), getAllUsersController);
+
+// Delete user
+router.delete("/delete-user/:id", verifyJWT, restrictTo("admin"), deleteUserController);
+
+// -------------------- Auth Check --------------------
 router.get("/check-auth", verifyJWT, async (req, res) => {
   console.log("Check-auth user:", req.user || "No user");
   if (!req.user) {
@@ -41,28 +70,8 @@ router.get("/check-auth", verifyJWT, async (req, res) => {
     });
   }
   return res.status(200).json(
-    new ApiResponse(
-      200,
-      req.user,
-      "User is authenticated"
-    )
+    new ApiResponse(200, req.user, "User is authenticated")
   );
 });
-
-// Admin-only routes
-router.get("/get-all-users",getAllUsersController);
-router.delete("/delete-user/:id",deleteUserController);
-
-
-// Authenticated user routes
-router.get("/get-user/:id", verifyJWT, getUserByIdController);
-router.patch(
-  "/update-user/:id",
-  verifyJWT,
-  upload.fields([
-    { name: "profilePic", maxCount: 1 },
-  ]),
-  updateUserController
-);
 
 module.exports = router;
