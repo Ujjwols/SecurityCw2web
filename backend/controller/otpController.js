@@ -11,8 +11,7 @@ const sendOTPController = asyncHandler(async ({ identifier }) => {
     throw new ApiError(400, 'Email identifier is required');
   }
 
-  // Delete any previous OTPs for this email
-  await OTP.deleteMany({ email: identifier });
+  await OTP.deleteMany({ email: identifier.toLowerCase() });
 
   const otp = generateOTP();
 
@@ -28,9 +27,8 @@ const sendOTPController = asyncHandler(async ({ identifier }) => {
     throw new ApiError(500, 'Failed to send OTP email');
   }
 
-  // Store OTP in DB with expiry
   const otpRecord = await OTP.create({
-    email: identifier,
+    email: identifier.toLowerCase(),
     token: otp,
     expiry: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
   });
@@ -68,7 +66,6 @@ const verifyOTPController = asyncHandler(async ({ token, otp }) => {
 
   const identifier = otpRecord.email;
 
-  // Clean up after successful verification
   await OTP.findByIdAndDelete(otpRecord._id);
 
   return {
