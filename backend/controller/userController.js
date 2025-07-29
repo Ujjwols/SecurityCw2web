@@ -3,12 +3,11 @@ const User = require("../model/userModel");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { sendOTPController, verifyOTPController } = require("../controller/otpController");
-const { v4: uuidv4 } = require("uuid");
-const validateUserFiles = require("../utils/valiadateUploadedFiles");
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
+const { redisClient } = require("../utils/redisClient");
+const { body, validationResult } = require("express-validator");
 
-// Generate refresh and access tokens
 const generateAccessTokenAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -17,132 +16,93 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
     }
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
+    
+    if (user.refreshToken) {
+      await redisClient.set(`blacklist:${user.refreshToken}`, 'true', 'EX', 7 * 24 * 60 * 60);
+    }
+    
     user.refreshToken = refreshToken;
     await user.save({ validateBeforeSave: false });
     return { accessToken, refreshToken };
   } catch (error) {
     console.error("Error generating tokens:", error);
-    throw new ApiError(
-      500,
-      "Something went wrong while generating access token and refresh token"
-    );
+    throw new ApiError(500, "Something went wrong while generating tokens");
   }
 };
 
-// Register a new user
 const registerUserController = asyncHandler(async (req, res) => {
-  const {
-    username,
-    email,
-    password,
-  } = req.body;
+  await Promise.all([
+    body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters').run(req),
+    body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
+    body('password').matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/)
+      .withMessage('Password must be at least 6 characters with one capital letter, one number, and one special character').run(req),
+  ]);
 
-  const requiredFields = {
-    username,
-    email,
-    password,
-  };
-
-   for (const [key, value] of Object.entries(requiredFields)) {
-    if (!value) {
-      throw new ApiError(400, `Field '${key}' is required`);
-    }
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
   }
 
+  const { username, email, password } = req.body;
 
   const existingUser = await User.findOne({
-    $or: [{ username }, { email }],
+    $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }],
   });
 
   if (existingUser) {
-    throw new ApiError(
-      400,
-      "User already exists with this employee ID, email, or phone number"
-    );
+    throw new ApiError(400, "User already exists with this username or email");
   }
 
-  if (!email.endsWith("@gmail.com")) {
+  if (!email.toLowerCase().endsWith("@gmail.com")) {
     throw new ApiError(400, "Email must be a valid Gmail address");
   }
 
-  const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/;
-  if (!passwordRegex.test(password)) {
-    throw new ApiError(
-      400,
-      "Password must be at least 6 characters long and include at least one capital letter, one number, and one special character"
-    );
-  }
-
-  // Validate file uploads
-  validateUserFiles(req.files);
-
-  // Upload profile picture to Cloudinary
   let profilePicUrl = "";
-  try {
-    const profilePicResult = await uploadOnCloudinary(
-      req.files.profilePic[0].path,
-      "User Profiles"
-    );
-    if (profilePicResult && profilePicResult.secure_url) {
-      profilePicUrl = profilePicResult.secure_url;
-    } else {
-      throw new ApiError(500, "Failed to upload profile picture");
-    }
-  } catch (error) {
-    throw new ApiError(500, `Profile picture upload failed: ${error.message}`);
-  }
-
-  // Upload additional file to Cloudinary (if provided)
-  let files = [];
-  if (req.files.additionalFile) {
+  if (req.files?.profilePic) {
     try {
-      const fileResult = await uploadOnCloudinary(
-        req.files.additionalFile[0].path,
-        "User Files"
+      const profilePicResult = await uploadOnCloudinary(
+        req.files.profilePic[0].path,
+        "User Profiles"
       );
-      if (fileResult && fileResult.secure_url) {
-        files.push({
-          url: fileResult.secure_url,
-          type: req.files.additionalFile[0].mimetype,
-        });
+      if (profilePicResult && profilePicResult.secure_url) {
+        profilePicUrl = profilePicResult.secure_url;
       } else {
-        throw new ApiError(500, "Failed to upload additional file");
+        throw new ApiError(500, "Failed to upload profile picture");
       }
     } catch (error) {
-      throw new ApiError(500, `Additional file upload failed: ${error.message}`);
+      throw new ApiError(500, `Profile picture upload failed: ${error.message}`);
     }
   }
 
-  // Create user
   const user = await User.create({
-    ...requiredFields,
+    username: username.toLowerCase(),
+    email: email.toLowerCase(),
+    password,
     profilePic: profilePicUrl,
-    files,
-    membershipStatus: "pending",
   });
 
-  const createdUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
+  const createdUser = await User.findById(user._id).select("-password -refreshToken");
 
-  if (!createdUser) {
-    throw new ApiError(400, "Error while creating user");
-  }
   return res
-    .status(200)
-    .json(new ApiResponse(200, createdUser, "User created successfully"));
+    .status(201)
+    .json(new ApiResponse(201, createdUser, "User created successfully"));
 });
 
-// Send OTP for login
 const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
-  const { email, password, deliveryMethod } = req.body;
+  await Promise.all([
+    body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
+    body('password').notEmpty().withMessage('Password is required').run(req),
+    body('deliveryMethod').notEmpty().withMessage('Delivery method is required').run(req),
+  ]);
 
-  if (!email || !password || !deliveryMethod) {
-    throw new ApiError(400, "Email, password, and delivery method are required");
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
   }
 
+  const { email, password, deliveryMethod } = req.body;
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) {
     throw new ApiError(400, "User does not exist");
   }
@@ -157,10 +117,6 @@ const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
   }
 
   const identifier = user.email;
-  if (!identifier) {
-    throw new ApiError(400, "User does not have an email registered");
-  }
-
   try {
     const { token, identifier: returnedIdentifier, message } =
       await sendOTPController({ identifier });
@@ -173,13 +129,18 @@ const sendOTPVerificationLogin = asyncHandler(async (req, res) => {
   }
 });
 
-// Verify OTP and login
 const verifyUserOTPLogin = asyncHandler(async (req, res) => {
-  const { token, otp } = req.body;
+  await Promise.all([
+    body('token').notEmpty().withMessage('Token is required').run(req),
+    body('otp').notEmpty().withMessage('OTP is required').run(req),
+  ]);
 
-  if (!token || !otp) {
-    throw new ApiError(400, "Token and OTP are required");
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
   }
+
+  const { token, otp } = req.body;
 
   try {
     const { identifier, message } = await verifyOTPController({
@@ -187,11 +148,10 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
       otp,
     });
 
-    const user = await User.findOne({ email: identifier });
+    const user = await User.findOne({ email: identifier.toLowerCase() });
     if (!user) {
       throw new ApiError(404, "User not found");
     }
-
 
     if (req.headers["x-admin-frontend"] === "true" && user.role !== "admin") {
       throw new ApiError(403, "This interface is for admin users only");
@@ -203,24 +163,23 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
     const options = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "Lax",
+      sameSite: "Strict",
+      maxAge: parseInt(process.env.ACCESS_TOKEN_EXPIRY) * 1000,
     };
 
-    console.log("Setting cookies:", { accessToken, refreshToken });
+    const refreshOptions = {
+      ...options,
+      maxAge: parseInt(process.env.REFRESH_TOKEN_EXPIRY) * 1000,
+    };
 
     return res
       .status(200)
-      .cookie("accessToken", accessToken,
-      options)
-      .cookie("refreshToken",
-      refreshToken,
-      options)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", refreshToken, refreshOptions)
       .json(
         new ApiResponse(
           200,
-          { loggedInUser,
-          accessToken,
-          refreshToken },
+          { loggedInUser, accessToken, refreshToken },
           "User logged in successfully"
         )
       );
@@ -230,7 +189,58 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
   }
 });
 
-// Logout user
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  
+  if (!incomingRefreshToken) {
+    throw new ApiError(401, "No refresh token provided");
+  }
+
+  try {
+    const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET, {
+      algorithms: ["HS256"],
+    });
+
+    const user = await User.findById(decodedToken._id);
+    if (!user || user.refreshToken !== incomingRefreshToken) {
+      throw new ApiError(401, "Invalid or expired refresh token");
+    }
+
+    const isBlacklisted = await redisClient.get(`blacklist:${incomingRefreshToken}`);
+    if (isBlacklisted) {
+      throw new ApiError(401, "Refresh token has been revoked");
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } = await generateAccessTokenAndRefreshToken(user._id);
+
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: parseInt(process.env.ACCESS_TOKEN_EXPIRY) * 1000,
+    };
+
+    const refreshOptions = {
+      ...options,
+      maxAge: parseInt(process.env.REFRESH_TOKEN_EXPIRY) * 1000,
+    };
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, refreshOptions)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "Access token refreshed successfully"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(401, error.message || "Invalid refresh token");
+  }
+});
+
 const logoutUserController = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
 
@@ -240,31 +250,38 @@ const logoutUserController = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ refreshToken });
   if (user) {
+    await redisClient.set(`blacklist:${refreshToken}`, 'true', 'EX', 7 * 24 * 60 * 60);
+    await redisClient.set(`blacklist:${req.cookies.accessToken}`, 'true', 'EX', parseInt(process.env.ACCESS_TOKEN_EXPIRY));
     user.refreshToken = null;
     await user.save({ validateBeforeSave: false });
   }
 
-  res
-    .clearCookie("accessToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-    })
-    .clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-    });
+  const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "Strict",
+  };
 
   return res
     .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
     .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
 
-// Get all users
+const getCurrentUserController = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).select("-password -refreshToken");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Current user retrieved successfully"));
+});
+
 const getAllUsersController = asyncHandler(async (req, res) => {
   const { status } = req.query;
-  const query = status ? { membershipStatus: status } : {};
+  const query = status ? { status } : {};
   const users = await User.find(query).select("-password -refreshToken");
 
   if (!users || users.length === 0) {
@@ -276,7 +293,6 @@ const getAllUsersController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, users, "Users retrieved successfully"));
 });
 
-// Get user by ID
 const getUserByIdController = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -290,7 +306,6 @@ const getUserByIdController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "User retrieved successfully"));
 });
 
-// Update user by ID
 const updateUserController = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
@@ -298,72 +313,32 @@ const updateUserController = asyncHandler(async (req, res) => {
   delete updateData.password;
   delete updateData.refreshToken;
   delete updateData.role;
-  delete updateData.membershipNumber;
-  delete updateData.registrationNumber;
-  delete updateData.membershipStatus;
 
   const user = await User.findById(id);
   if (!user) {
     throw new ApiError(404, "User not found");
   }
 
-  // Validate file uploads if provided
-  if (req.files && (req.files.profilePic || req.files.additionalFile)) {
-    validateUserFiles(req.files);
-
-    // Update profile picture if provided
-    if (req.files.profilePic) {
-      try {
-        // Delete old profile picture from Cloudinary if exists
-        if (user.profilePic) {
-          const publicId = user.profilePic.split("/").pop().split(".")[0];
-          await cloudinary.uploader.destroy(`User Profiles/${publicId}`);
-        }
-        // Upload new profile picture
-        const profilePicResult = await uploadOnCloudinary(
-          req.files.profilePic[0].path,
-          "User Profiles"
-        );
-        if (profilePicResult && profilePicResult.secure_url) {
-          user.profilePic = profilePicResult.secure_url;
-        } else {
-          throw new ApiError(500, "Failed to upload profile picture");
-        }
-      } catch (error) {
-        throw new ApiError(500, `Profile picture upload failed: ${error.message}`);
+  if (req.files?.profilePic) {
+    try {
+      if (user.profilePic) {
+        const publicId = user.profilePic.split("/").pop().split(".")[0];
+        await cloudinary.uploader.destroy(`User Profiles/${publicId}`);
       }
-    }
-
-    // Update additional file if provided
-    if (req.files.additionalFile) {
-      try {
-        // Delete old file from Cloudinary if exists
-        if (user.files.length > 0) {
-          const publicId = user.files[0].url.split("/").pop().split(".")[0];
-          await cloudinary.uploader.destroy(`User Files/${publicId}`);
-        }
-        // Upload new file
-        const fileResult = await uploadOnCloudinary(
-          req.files.additionalFile[0].path,
-          "User Files"
-        );
-        if (fileResult && fileResult.secure_url) {
-          user.files = [
-            {
-              url: fileResult.secure_url,
-              type: req.files.additionalFile[0].mimetype,
-            },
-          ];
-        } else {
-          throw new ApiError(500, "Failed to upload additional file");
-        }
-      } catch (error) {
-        throw new ApiError(500, `Additional file upload failed: ${error.message}`);
+      const profilePicResult = await uploadOnCloudinary(
+        req.files.profilePic[0].path,
+        "User Profiles"
+      );
+      if (profilePicResult && profilePicResult.secure_url) {
+        user.profilePic = profilePicResult.secure_url;
+      } else {
+        throw new ApiError(500, "Failed to upload profile picture");
       }
+    } catch (error) {
+      throw new ApiError(500, `Profile picture upload failed: ${error.message}`);
     }
   }
 
-  // Update other fields
   Object.assign(user, updateData);
   await user.save({ validateBeforeSave: true });
 
@@ -374,7 +349,6 @@ const updateUserController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, updatedUser, "User updated successfully"));
 });
 
-// Delete user by ID
 const deleteUserController = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -383,7 +357,6 @@ const deleteUserController = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
-  // Delete files from Cloudinary
   const deletionErrors = [];
   if (user.profilePic) {
     try {
@@ -392,17 +365,6 @@ const deleteUserController = asyncHandler(async (req, res) => {
     } catch (error) {
       if (!error.message.includes("not found")) {
         deletionErrors.push(`Failed to delete profile picture: ${error.message}`);
-      }
-    }
-  }
-
-  if (user.files.length > 0) {
-    try {
-      const publicId = user.files[0].url.split("/").pop().split(".")[0];
-      await cloudinary.uploader.destroy(`User Files/${publicId}`);
-    } catch (error) {
-      if (!error.message.includes("not found")) {
-        deletionErrors.push(`Failed to delete additional file: ${error.message}`);
       }
     }
   }
@@ -427,8 +389,10 @@ module.exports = {
   sendOTPVerificationLogin,
   verifyUserOTPLogin,
   logoutUserController,
+  getCurrentUserController,
   getAllUsersController,
   getUserByIdController,
   updateUserController,
   deleteUserController,
+  refreshAccessToken,
 };
