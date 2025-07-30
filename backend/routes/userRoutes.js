@@ -12,6 +12,7 @@ const {
   deleteUserController,
   updatePasswordController,
   refreshAccessToken,
+  getLogsController
 } = require("../controller/userController");
 
 const { verifyJWT, restrictTo } = require("../middleware/authMiddleware");
@@ -54,6 +55,10 @@ router.post(
 // -------------------- Admin-Only Routes --------------------
 router.get("/get-all-users", verifyJWT, restrictTo("admin"), getAllUsersController);
 router.delete("/delete-user/:id", verifyJWT, restrictTo("admin"), deleteUserController);
+
+
+router.get('/logs', verifyJWT, restrictTo('admin'), getLogsController);
+
 
 // -------------------- Auth Check --------------------
 router.get("/check-auth", verifyJWT, async (req, res) => {

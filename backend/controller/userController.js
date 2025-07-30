@@ -1,5 +1,6 @@
 const asyncHandler = require("../utils/asyncHandler");
 const User = require("../model/userModel");
+const Log = require("../model/logModel");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { sendOTPController, verifyOTPController } = require("../controller/otpController");
@@ -18,8 +19,6 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
     if (!user) {
       throw new ApiError(404, "User not found");
     }
-
-  
 
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
@@ -461,6 +460,26 @@ const deleteUserController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User deleted successfully"));
 });
 
+const getLogsController = async (req, res) => {
+  const { startDate, endDate, username } = req.query;
+
+  const query = {};
+  if (startDate && endDate) {
+    query.timestamp = {
+      $gte: startDate,
+      $lte: endDate,
+    };
+  }
+  if (username && username !== 'all') {
+    query.username = username;
+  }
+
+  const logs = await Log.find(query).sort({ timestamp: -1 }).limit(100).lean();
+
+  return res.status(200).json(new ApiResponse(200, logs, 'Logs retrieved successfully'));
+};
+
+
 module.exports = {
   registerUserController,
   generateAccessTokenAndRefreshToken,
@@ -474,4 +493,5 @@ module.exports = {
   deleteUserController,
   refreshAccessToken,
   updatePasswordController,
+  getLogsController,
 };

@@ -7,6 +7,7 @@ const xss = require('xss-clean');
 const morgan = require('morgan');
 const csrfProtection = require('./middleware/csrfProtection');
 const { expressCspHeader, INLINE, NONE, SELF } = require('express-csp-header');
+const winstonLogger = require('./middleware/winstonLogger');
 
 const app = express();
 
@@ -70,6 +71,8 @@ app.use(
     skip: (req, res) => res.statusCode < 400,
   })
 );
+
+app.use(winstonLogger); 
 
 app.use(
   cors({

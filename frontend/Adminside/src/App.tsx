@@ -11,6 +11,7 @@ import Gallery from "./pages/Gallery";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import VerifyOtp from "./pages/verifyOtp";
+import AdminLogs from "./pages/ActivityLogs";
 import { initializeAPI } from "./api/api";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -41,6 +42,7 @@ const App = () => {
                 <Route path="/members" element={<Members />} />
                 <Route path="/events" element={<Events />} />
                 <Route path="/gallery" element={<Gallery />} />
+                <Route path="/logs" element={<AdminLogs/>}/>
               </Route>
 
               <Route path="*" element={<NotFound />} />
