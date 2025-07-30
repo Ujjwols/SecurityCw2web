@@ -82,7 +82,7 @@ app.use(
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-frontend', 'X-CSRF-Token','x-csrf-token'],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS','PUT'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PUT'],
   })
 );
 
@@ -121,6 +121,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static('public'));
+
 
 app.use('/api/v1/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
