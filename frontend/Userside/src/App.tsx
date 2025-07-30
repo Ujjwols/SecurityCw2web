@@ -17,13 +17,13 @@ import UpdatePassword from "./pages/updatePassword";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-import { initializeAPI } from "./api/api";  // 2. import initializeAPI from your api.ts
+import { initializeAPI } from "./api/api";  
 
 const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    initializeAPI(); // 4. fetch CSRF token on app load
+    initializeAPI(); 
   }, []);
 
   return (

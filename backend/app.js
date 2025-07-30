@@ -55,7 +55,7 @@ app.use(globalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many authentication attempts, please try again later',
@@ -126,7 +126,9 @@ app.use('/api/v1/csrf-token', csrfProtection, (req, res) => {
 });
 
 const userRouter = require('./routes/userRoutes');
+const eventRouter = require('./routes/eventRoutes');
 app.use('/api/v1/user', userRouter);
+app.use('/api/v1/event', eventRouter);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
