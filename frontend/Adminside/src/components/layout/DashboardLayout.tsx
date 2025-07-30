@@ -34,21 +34,36 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { logout, theme, toggleTheme, notifications } = useAuth();
+  const { user, logout } = useAuth();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   
   const isActive = (path: string) => {
     return location.pathname === path ? 'text-amber-500 font-bold' : 'text-blue-900';
   };
 
-  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: 'Success',
+        description: 'Logged out successfully',
+      });
+      navigate('/login');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
+        variant: 'destructive',
+      });
+    }
+  };
   
   return (
     <div className="flex min-h-screen bg-[#F2F2F2]">
       {/* Sidebar */}
       <div className="w-48 bg-gray-100 flex flex-col shadow-md">
         <div className="p-6 flex justify-center">
-          <h1 className="text-4xl font-bold text-blue-800">REST</h1>
+          <h1 className="text-4xl font-bold text-blue-800">SCHEDURA</h1>
         </div>
         
         <nav className="flex-1 px-4 py-6">
@@ -77,12 +92,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 <span>Gallery</span>
               </Link>
             </li>
-            <li>
-              <Link to="/setting" className={`flex items-center text-xl ${isActive('/setting')}`}>
-                <Settings className="w-5 h-5 mr-3" />
-                <span>Setting</span>
-              </Link>
-            </li>
+
             <li>
               <button 
                 onClick={() => setShowLogoutDialog(true)} 
@@ -101,55 +111,39 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         <header className="bg-white border-b p-4 flex justify-between items-center">
           <div className="flex-1"></div>
           <div className="flex items-center space-x-4">
-            {/* Notification Bell */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  className="p-2 relative"
-                >
-                  <Bell className="h-6 w-6" />
-                  {unreadNotificationsCount > 0 && (
-                    <span className="absolute top-1 right-1 bg-red-500 rounded-full w-2 h-2"></span>
-                  )}
+            {/* User Profile */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                    {user?.profilePic ? (
+                      <img 
+                        src={user.profilePic} 
+                        alt={user.username}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-gray-600 font-medium">
+                        {user?.username?.charAt(0).toUpperCase() || 'A'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm font-medium">{user?.username || 'Admin'}</span>
+                  <ChevronDown className="w-4 h-4" />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0">
-                <div className="p-4 border-b">
-                  <h3 className="font-medium">Notifications</h3>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length > 0 ? (
-                    notifications.map((notification) => (
-                      <div 
-                        key={notification.id} 
-                        className={`p-4 border-b ${notification.read ? 'bg-white' : 'bg-blue-50'}`}
-                      >
-                        <h4 className="font-medium">{notification.title}</h4>
-                        <p className="text-sm text-gray-500">{notification.message}</p>
-                        <div className="flex justify-between items-center mt-2">
-                          <span className="text-xs text-gray-400">
-                            {notification.timestamp.toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-gray-500">
-                      No notifications
-                    </div>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Profile Image */}
-            <img 
-              src="https://randomuser.me/api/portraits/men/32.jpg"
-              alt="Admin profile" 
-              className="w-8 h-8 rounded-full object-cover cursor-pointer" 
-              onClick={() => navigate('/setting')}
-            />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/setting')}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowLogoutDialog(true)}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
@@ -157,9 +151,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           {children}
         </main>
         
-        <footer className="bg-white border-t p-2 text-center text-xs text-gray-500">
-          <p>2025 REST. All Rights Reserved.</p>
-        </footer>
       </div>
 
       {/* Logout Confirmation Dialog */}
@@ -177,7 +168,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             </Button>
             <Button variant="destructive" onClick={() => {
               setShowLogoutDialog(false);
-              logout();
+              handleLogout();
             }}>
               Logout
             </Button>

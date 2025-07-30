@@ -10,9 +10,6 @@ interface EventCardProps {
   time: string;
   location: string;
   image: string;
-  attendees: number;
-  price?: string;
-  category: string;
 }
 
 const EventCard = ({ 
@@ -21,10 +18,7 @@ const EventCard = ({
   date, 
   time, 
   location, 
-  image, 
-  attendees, 
-  price = "Free",
-  category 
+  image
 }: EventCardProps) => {
   return (
     <Card className="group overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 bg-gradient-card border-0">
@@ -35,16 +29,6 @@ const EventCard = ({
             alt={title}
             className="w-full h-48 object-cover transition-transform duration-300 group-hover:scale-110"
           />
-          <div className="absolute top-4 left-4">
-            <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-xs font-semibold">
-              {category}
-            </span>
-          </div>
-          <div className="absolute top-4 right-4">
-            <span className="bg-accent text-accent-foreground px-3 py-1 rounded-full text-xs font-bold">
-              {price}
-            </span>
-          </div>
         </div>
       </CardHeader>
       
@@ -65,10 +49,6 @@ const EventCard = ({
           <div className="flex items-center space-x-2">
             <MapPin className="w-4 h-4 text-primary" />
             <span className="text-sm">{location}</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Users className="w-4 h-4 text-primary" />
-            <span className="text-sm">{attendees} attending</span>
           </div>
         </div>
       </CardContent>

@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -20,248 +21,117 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from '@/context/AuthContext';
+import api from "@/api/api";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import axios, { AxiosError } from "axios";
-import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { FileText, Download, X, Trash2, Edit, UserPlus, Loader2 } from 'lucide-react';
+import { AxiosError } from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
-
-interface Member {
+interface User {
   _id: string;
-  employeeId: string;
   username: string;
-  surname: string;
-  address: string;
-  province: string;
-  district: string;
-  municipality: string;
-  wardNumber: string;
-  tole: string;
-  telephoneNumber: string;
-  mobileNumber: string;
-  dob: string;
-  postAtRetirement: string;
-  pensionLeaseNumber: string;
-  office: string;
-  serviceStartDate: string;
-  serviceRetirementDate: string;
-  dateOfFillUp: string;
-  place: string;
   email: string;
-  membershipNumber: string;
-  registrationNumber: string;
-  role: string;
+  role: 'admin' | 'user';
   profilePic: string;
-  files: { url: string; type: string }[];
-  membershipStatus: "pending" | "approved";
+  createdAt: string;
+  updatedAt: string;
 }
 
 const Members: React.FC = () => {
-  const [members, setMembers] = useState<Member[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [currentMember, setCurrentMember] = useState<Member | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "all">("pending");
+  const { user: adminUser, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
 
   // Form state
   const [formData, setFormData] = useState({
-    employeeId: "",
     username: "",
-    surname: "",
-    address: "",
-    province: "",
-    district: "",
-    municipality: "",
-    wardNumber: "",
-    tole: "",
-    telephoneNumber: "",
-    mobileNumber: "",
-    dob: "",
-    postAtRetirement: "",
-    pensionLeaseNumber: "",
-    office: "",
-    serviceStartDate: "",
-    serviceRetirementDate: "",
-    dateOfFillUp: "",
-    place: "",
     email: "",
-    role: "user",
     password: "",
+    role: "user" as 'admin' | 'user',
   });
 
   // File state
   const [profilePic, setProfilePic] = useState<File | null>(null);
-  const [additionalFile, setAdditionalFile] = useState<File | null>(null);
 
-  // Validation function for form data
-  const validateForm = () => {
-    const requiredFields = [
-      "employeeId",
-      "username",
-      "surname",
-      "address",
-      "province",
-      "district",
-      "municipality",
-      "wardNumber",
-      "tole",
-      "telephoneNumber",
-      "mobileNumber",
-      "dob",
-      "postAtRetirement",
-      "pensionLeaseNumber",
-      "office",
-      "serviceStartDate",
-      "serviceRetirementDate",
-      "dateOfFillUp",
-      "place",
-      "email",
-      "role",
-    ];
-
-    if (!isEditMode) {
-      requiredFields.push("password");
+  useEffect(() => {
+    if (authLoading) return;
+    if (!adminUser) {
+      toast({
+        title: 'Unauthorized',
+        description: 'Please log in to view members.',
+        variant: 'destructive',
+      });
+      window.location.href = '/login';
+      return;
+    }
+    if (adminUser.role !== 'admin') {
+      toast({
+        title: 'Access Denied',
+        description: 'Only admin users can access this page.',
+        variant: 'destructive',
+      });
+      window.location.href = '/profile';
+      return;
     }
 
-    for (const field of requiredFields) {
-      if (!formData[field as keyof typeof formData].trim()) {
-        return `Field '${field}' is required`;
-      }
-    }
+    // API is already initialized in App.tsx, no need to initialize again here
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      return "Invalid email format";
-    }
+    fetchUsers();
+  }, [adminUser, authLoading, toast]);
 
-    // Phone number validation
-    const phoneRegex = /^\d{7,15}$/;
-    if (
-      !phoneRegex.test(formData.mobileNumber) ||
-      !phoneRegex.test(formData.telephoneNumber)
-    ) {
-      return "Phone numbers must be 7-15 digits";
-    }
-
-    // Role validation
-    if (!["user", "admin"].includes(formData.role)) {
-      return "Invalid role selected";
-    }
-
-    // Password validation for create
-    if (!isEditMode) {
-      const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
-      if (!passwordRegex.test(formData.password)) {
-        return "Password must be at least 8 characters long and contain letters and numbers";
-      }
-    }
-
-    // File validation
-    if (!isEditMode && !profilePic) {
-      return "Profile picture is required";
-    }
-    if (profilePic && !profilePic.type.startsWith("image/")) {
-      return "Profile picture must be an image";
-    }
-    if (
-      additionalFile &&
-      ![
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ].includes(additionalFile.type)
-    ) {
-      return "Additional file must be an image, PDF, or Word document";
-    }
-
-    return "";
-  };
-
-  // Fetch all members
-  const fetchMembers = async () => {
+  const fetchUsers = async () => {
     try {
       setLoading(true);
       setError("");
-      const response = await axios.get(
-        `${API_BASE_URL}/api/v1/user/get-all-users`,
-        {
-          params: { status: statusFilter === "all" ? undefined : statusFilter },
-          withCredentials: true,
-          headers: { "x-admin-frontend": "true" },
-        }
+      const response = await api.get<{ success: boolean; data: User[]; message: string }>(
+        '/user/get-all-users'
       );
-
-      // Normalize members
-      const normalizedMembers: Member[] = response.data.data
-        .filter((user: Member) => user.role === "user" || user.role === "admin")
-        .map((user: Member) => ({
-          _id: user._id,
-          employeeId: user.employeeId,
-          username: user.username,
-          surname: user.surname,
-          address: user.address,
-          province: user.province,
-          district: user.district,
-          municipality: user.municipality,
-          wardNumber: user.wardNumber,
-          tole: user.tole,
-          telephoneNumber: user.telephoneNumber,
-          mobileNumber: user.mobileNumber,
-          dob: user.dob.split("T")[0],
-          postAtRetirement: user.postAtRetirement,
-          pensionLeaseNumber: user.pensionLeaseNumber,
-          office: user.office,
-          serviceStartDate: user.serviceStartDate.split("T")[0],
-          serviceRetirementDate: user.serviceRetirementDate.split("T")[0],
-          dateOfFillUp: user.dateOfFillUp.split("T")[0],
-          place: user.place,
-          email: user.email,
-          membershipNumber: user.membershipNumber,
-          registrationNumber: user.registrationNumber,
-          role: user.role,
-          profilePic: user.profilePic || "",
-          files: user.files || [],
-          membershipStatus: user.membershipStatus,
-        }));
-
-      setMembers(normalizedMembers);
+      if (response.data.success) {
+        setUsers(response.data.data);
+      }
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to fetch members"
-          : "An unexpected error occurred";
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.status === 401
+          ? 'Please log in to view users.'
+          : error.response?.data?.message || 'Failed to fetch users'
+        : 'An unexpected error occurred';
       setError(errorMessage);
       toast({
-        title: "Error",
+        title: 'Error',
         description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login");
-      return;
+  const validateForm = () => {
+    if (!formData.username.trim()) {
+      return "Username is required";
     }
-    fetchMembers();
-  }, [isAuthenticated, navigate, statusFilter]);
+    if (!formData.email.trim()) {
+      return "Email is required";
+    }
+    if (!isEditMode && !formData.password.trim()) {
+      return "Password is required for new users";
+    }
+    if (formData.password && formData.password.length < 6) {
+      return "Password must be at least 6 characters";
+    }
+    if (!["admin", "user"].includes(formData.role)) {
+      return "Invalid role selected";
+    }
+    return "";
+  };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData({
@@ -271,67 +141,41 @@ const Members: React.FC = () => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, files } = e.target;
+    const { files } = e.target;
     if (files && files[0]) {
-      if (name === "profilePic") {
-        setProfilePic(files[0]);
-      } else if (name === "additionalFile") {
-        setAdditionalFile(files[0]);
-      }
+      setProfilePic(files[0]);
     }
   };
 
-  const handleEdit = async (member: Member) => {
+  const handleEdit = async (user: User) => {
     try {
       setError("");
-      const response = await axios.get(
-        `${API_BASE_URL}/api/v1/user/get-user/${member._id}`,
-        {
-          withCredentials: true,
-          headers: { "x-admin-frontend": "true" },
-        }
+      const response = await api.get<{ success: boolean; data: User; message: string }>(
+        `/user/get-user/${user._id}`
       );
-
-      const userData = response.data.data;
-      setCurrentMember(userData);
-      setFormData({
-        employeeId: userData.employeeId,
-        username: userData.username,
-        surname: userData.surname,
-        address: userData.address,
-        province: userData.province,
-        district: userData.district,
-        municipality: userData.municipality,
-        wardNumber: userData.wardNumber,
-        tole: userData.tole,
-        telephoneNumber: userData.telephoneNumber,
-        mobileNumber: userData.mobileNumber,
-        dob: userData.dob.split("T")[0],
-        postAtRetirement: userData.postAtRetirement,
-        pensionLeaseNumber: userData.pensionLeaseNumber,
-        office: userData.office,
-        serviceStartDate: userData.serviceStartDate.split("T")[0],
-        serviceRetirementDate: userData.serviceRetirementDate.split("T")[0],
-        dateOfFillUp: userData.dateOfFillUp.split("T")[0],
-        place: userData.place,
-        email: userData.email,
-        role: userData.role,
-        password: "",
-      });
-      setProfilePic(null);
-      setAdditionalFile(null);
-      setIsEditMode(true);
-      setIsModalOpen(true);
+      
+      if (response.data.success) {
+        const userData = response.data.data;
+        setCurrentUser(userData);
+        setFormData({
+          username: userData.username,
+          email: userData.email,
+          role: userData.role,
+          password: "",
+        });
+        setProfilePic(null);
+        setIsEditMode(true);
+        setIsModalOpen(true);
+      }
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to fetch member details"
-          : "An unexpected error occurred";
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.data?.message || 'Failed to fetch user details'
+        : 'An unexpected error occurred';
       setError(errorMessage);
       toast({
-        title: "Error",
+        title: 'Error',
         description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       });
     }
   };
@@ -343,9 +187,9 @@ const Members: React.FC = () => {
     if (validationError) {
       setError(validationError);
       toast({
-        title: "Validation Error",
+        title: 'Validation Error',
         description: validationError,
-        variant: "destructive",
+        variant: 'destructive',
       });
       return;
     }
@@ -361,200 +205,112 @@ const Members: React.FC = () => {
       if (profilePic) {
         formDataToSend.append("profilePic", profilePic);
       }
-      if (additionalFile) {
-        formDataToSend.append("additionalFile", additionalFile);
-      }
 
-      if (isEditMode && currentMember) {
-        await axios.patch(
-          `${API_BASE_URL}/api/v1/user/update-user/${currentMember._id}`,
+      if (isEditMode && currentUser) {
+        const response = await api.patch<{ success: boolean; data: User; message: string }>(
+          `/user/update-user/${currentUser._id}`,
           formDataToSend,
           {
-            withCredentials: true,
             headers: {
-              "x-admin-frontend": "true",
-              "Content-Type": "multipart/form-data",
+              'Content-Type': 'multipart/form-data',
             },
           }
         );
-        toast({
-          title: "Success",
-          description: "Member updated successfully",
-        });
+        if (response.data.success) {
+          setUsers(users.map((user) => (user._id === currentUser._id ? response.data.data : user)));
+          toast({
+            title: 'Success',
+            description: 'User updated successfully',
+          });
+        }
       } else {
-        await axios.post(
-          `${API_BASE_URL}/api/v1/user/register`,
+        const response = await api.post<{ success: boolean; data: User; message: string }>(
+          '/user/register',
           formDataToSend,
           {
-            withCredentials: true,
             headers: {
-              "x-admin-frontend": "true",
-              "Content-Type": "multipart/form-data",
+              'Content-Type': 'multipart/form-data',
             },
           }
         );
-        toast({
-          title: "Success",
-          description: "Member created successfully",
-        });
+        if (response.data.success) {
+          setUsers([...users, response.data.data]);
+          toast({
+            title: 'Success',
+            description: 'User created successfully',
+          });
+        }
       }
-      fetchMembers();
       resetFormAndCloseModal();
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to save member"
-          : "An unexpected error occurred";
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.data?.message || 'Failed to save user'
+        : 'An unexpected error occurred';
       setError(errorMessage);
       toast({
-        title: "Error",
+        title: 'Error',
         description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this member?")) {
+    if (!window.confirm("Are you sure you want to delete this user?")) {
       return;
     }
 
     try {
       setError("");
-      await axios.delete(
-        `${API_BASE_URL}/api/v1/user/delete-user/${id}`,
-        {
-          withCredentials: true,
-          headers: { "x-admin-frontend": "true" },
-        }
+      const response = await api.delete<{ success: boolean; data: object; message: string }>(
+        `/user/delete-user/${id}`
       );
-      toast({
-        title: "Success",
-        description: "Member deleted successfully",
-      });
-      fetchMembers();
+      if (response.data.success) {
+        setUsers(users.filter((user) => user._id !== id));
+        toast({
+          title: 'Success',
+          description: 'User deleted successfully',
+        });
+      }
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to delete member"
-          : "An unexpected error occurred";
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.data?.message || 'Failed to delete user'
+        : 'An unexpected error occurred';
       setError(errorMessage);
       toast({
-        title: "Error",
+        title: 'Error',
         description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleApprove = async (id: string) => {
-    try {
-      setError("");
-      await axios.post(
-        `${API_BASE_URL}/api/v1/user/approve-membership/${id}`,
-        {},
-        {
-          withCredentials: true,
-          headers: { "x-admin-frontend": "true" },
-        }
-      );
-      toast({
-        title: "Success",
-        description: "Membership approved successfully",
-      });
-      fetchMembers();
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to approve membership"
-          : "An unexpected error occurred";
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDecline = async (id: string) => {
-    if (!window.confirm("Are you sure you want to decline this membership? This will permanently delete the user's record.")) {
-      return;
-    }
-    try {
-      setError("");
-      await axios.post(
-        `${API_BASE_URL}/api/v1/user/decline-membership/${id}`,
-        {},
-        {
-          withCredentials: true,
-          headers: { "x-admin-frontend": "true" },
-        }
-      );
-      toast({
-        title: "Success",
-        description: "Membership declined and user deleted successfully",
-      });
-      fetchMembers();
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof AxiosError
-          ? error.response?.data?.message || "Failed to decline membership and delete user"
-          : "An unexpected error occurred";
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       });
     }
   };
 
   const resetFormAndCloseModal = () => {
     setFormData({
-      employeeId: "",
       username: "",
-      surname: "",
-      address: "",
-      province: "",
-      district: "",
-      municipality: "",
-      wardNumber: "",
-      tole: "",
-      telephoneNumber: "",
-      mobileNumber: "",
-      dob: "",
-      postAtRetirement: "",
-      pensionLeaseNumber: "",
-      office: "",
-      serviceStartDate: "",
-      serviceRetirementDate: "",
-      dateOfFillUp: "",
-      place: "",
       email: "",
-      role: "user",
       password: "",
+      role: "user",
     });
     setProfilePic(null);
-    setAdditionalFile(null);
-    setCurrentMember(null);
+    setCurrentUser(null);
     setIsEditMode(false);
     setIsModalOpen(false);
     setError("");
   };
 
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <DashboardLayout>
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-800"></div>
+          <Loader2 className="w-8 h-8 animate-spin" />
         </div>
       </DashboardLayout>
     );
+  }
+
+  if (!adminUser || adminUser.role !== 'admin') {
+    return null;
   }
 
   return (
@@ -568,28 +324,9 @@ const Members: React.FC = () => {
           }}
           className="bg-gray-800 hover:bg-gray-700"
         >
+          <UserPlus className="w-4 h-4 mr-2" />
           + Add Member
         </Button>
-      </div>
-
-      {/* Status Filter */}
-      <div className="mb-6">
-        <Label htmlFor="statusFilter" className="text-sm font-medium mr-2">
-          Filter by Membership Status:
-        </Label>
-        <Select
-          value={statusFilter}
-          onValueChange={(value: "pending" | "approved" | "all") => setStatusFilter(value)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="all">All</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {error && <div className="text-red-500 mb-4">{error}</div>}
@@ -599,67 +336,61 @@ const Members: React.FC = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Employee ID</TableHead>
-                <TableHead>Name</TableHead>
+                <TableHead>Profile</TableHead>
+                <TableHead>Username</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Mobile</TableHead>
-                <TableHead>Membership No.</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.length === 0 ? (
+              {users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-gray-500">
-                    No members found.
+                  <TableCell colSpan={6} className="text-center text-gray-500">
+                    No users found.
                   </TableCell>
                 </TableRow>
               ) : (
-                members.map((member) => (
-                  <TableRow key={member._id}>
-                    <TableCell>{member.employeeId}</TableCell>
-                    <TableCell className="font-medium">
-                      {member.username} {member.surname}
+                users.map((user) => (
+                  <TableRow key={user._id}>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                          {user.profilePic ? (
+                            <img 
+                              src={user.profilePic} 
+                              alt={user.username}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-gray-600 font-medium">
+                              {user.username.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
-                    <TableCell>{member.email}</TableCell>
-                    <TableCell>{member.mobileNumber}</TableCell>
-                    <TableCell>{member.membershipNumber}</TableCell>
-                    <TableCell className="capitalize">{member.membershipStatus}</TableCell>
-                    <TableCell>{member.role}</TableCell>
-                    <TableCell className="text-right">
-                      {member.membershipStatus === "pending" && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            onClick={() => handleApprove(member._id)}
-                            className="text-green-600 hover:text-green-900 mr-2"
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={() => handleDecline(member._id)}
-                            className="text-red-600 hover:text-red-900 mr-2"
-                          >
-                            Decline
-                          </Button>
-                        </>
-                      )}
+                    <TableCell className="font-medium">{user.username}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell className="capitalize">{user.role}</TableCell>
+                    <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right space-x-2">
                       <Button
                         variant="ghost"
-                        onClick={() => handleEdit(member)}
-                        className="text-gray-600 hover:text-gray-900 mr-2"
+                        size="sm"
+                        onClick={() => handleEdit(user)}
+                        className="text-gray-600 hover:text-gray-900"
                       >
-                        Edit
+                        <Edit className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
-                        onClick={() => handleDelete(member._id)}
+                        size="sm"
+                        onClick={() => handleDelete(user._id)}
                         className="text-red-600 hover:text-red-900"
                       >
-                        Delete
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -670,9 +401,9 @@ const Members: React.FC = () => {
         </div>
       </Card>
 
-      {/* Add/Edit Member Dialog */}
+      {/* Add/Edit User Dialog */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">
               {isEditMode ? "Edit Member" : "Add Member"}
@@ -683,396 +414,91 @@ const Members: React.FC = () => {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              {/* Personal Information */}
-              <div className="col-span-2">
-                <h3 className="font-medium mb-2">Personal Information</h3>
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="employeeId" className="text-sm font-medium">
-                      Employee ID
-                    </Label>
-                    <Input
-                      id="employeeId"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="username" className="text-sm font-medium">
-                      First Name
-                    </Label>
-                    <Input
-                      id="username"
-                      name="username"
-                      value={formData.username}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="surname" className="text-sm font-medium">
-                      Surname
-                    </Label>
-                    <Input
-                      id="surname"
-                      name="surname"
-                      value={formData.surname}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="dob" className="text-sm font-medium">
-                      Date of Birth
-                    </Label>
-                    <Input
-                      id="dob"
-                      name="dob"
-                      type="date"
-                      value={formData.dob}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="email" className="text-sm font-medium">
-                      Email
-                    </Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="role" className="text-sm font-medium">
-                      Role
-                    </Label>
-                    <Select
-                      name="role"
-                      value={formData.role}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, role: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {!isEditMode && (
-                    <div className="grid gap-2">
-                      <Label htmlFor="password" className="text-sm font-medium">
-                        Password
-                      </Label>
-                      <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        required
-                      />
-                    </div>
-                  )}
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="profilePic" className="text-sm font-medium">
-                      Profile Picture
-                    </Label>
-                    <Input
-                      id="profilePic"
-                      name="profilePic"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      required={!isEditMode}
-                    />
-                    {isEditMode && currentMember?.profilePic && (
-                      <a
-                        href={currentMember.profilePic}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-sm"
-                      >
-                        View Current Profile Picture
-                      </a>
-                    )}
-                  </div>
-
-	snd <div className="grid gap-2">
-                    <Label
-                      htmlFor="additionalFile"
-                      className="text-sm font-medium"
-                    >
-                      Additional File (Image/PDF/Word)
-                    </Label>
-                    <Input
-                      id="additionalFile"
-                      name="additionalFile"
-                      type="file"
-                      accept="image/*,.pdf,.doc,.docx"
-                      onChange={handleFileChange}
-                    />
-                    {isEditMode &&
-                      currentMember?.files &&
-                      currentMember.files.length > 0 && (
-                        <a
-                          href={currentMember.files[0].url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 text-sm"
-                        >
-                          View Current Additional File
-                        </a>
-                      )}
-                  </div>
-                </div>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="username" className="text-sm font-medium">
+                  Username
+                </Label>
+                <Input
+                  id="username"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  required
+                />
               </div>
 
-              {/* Contact Information */}
-              <div className="col-span-2">
-                <h3 className="font-medium mb-2">Contact Information</h3>
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="address" className="text-sm font-medium">
-                      Address
-                    </Label>
-                    <Input
-                      id="address"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="province" className="text-sm font-medium">
-                      Province
-                    </Label>
-                    <Input
-                      id="province"
-                      name="province"
-                      value={formData.province}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="district" className="text-sm font-medium">
-                      District
-                    </Label>
-                    <Input
-                      id="district"
-                      name="district"
-                      value={formData.district}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="municipality"
-                      className="text-sm font-medium"
-                    >
-                      Municipality
-                    </Label>
-                    <Input
-                      id="municipality"
-                      name="municipality"
-                      value={formData.municipality}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="wardNumber" className="text-sm font-medium">
-                      Ward Number
-                    </Label>
-                    <Input
-                      id="wardNumber"
-                      name="wardNumber"
-                      value={formData.wardNumber}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="tole" className="text-sm font-medium">
-                      Tole
-                    </Label>
-                    <Input
-                      id="tole"
-                      name="tole"
-                      value={formData.tole}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="telephoneNumber"
-                      className="text-sm font-medium"
-                    >
-                      Telephone
-                    </Label>
-                    <Input
-                      id="telephoneNumber"
-                      name="telephoneNumber"
-                      value={formData.telephoneNumber}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="mobileNumber" className="text-sm font-medium">
-                      Mobile
-                    </Label>
-                    <Input
-                      id="mobileNumber"
-                      name="mobileNumber"
-                      value={formData.mobileNumber}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-                </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  required
+                />
               </div>
 
-              {/* Employment Information */}
-              <div className="col-span-2">
-                <h3 className="font-medium mb-2">Employment Information</h3>
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="postAtRetirement"
-                      className="text-sm font-medium"
-                    >
-                      Post at Retirement
-                    </Label>
-                    <Input
-                      id="postAtRetirement"
-                      name="postAtRetirement"
-                      value={formData.postAtRetirement}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
+              <div className="grid gap-2">
+                <Label htmlFor="role" className="text-sm font-medium">
+                  Role
+                </Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value: 'admin' | 'user') =>
+                    setFormData({ ...formData, role: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">User</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="pensionLeaseNumber"
-                      className="text-sm font-medium"
-                    >
-                      Pension Lease Number
-                    </Label>
-                    <Input
-                      id="pensionLeaseNumber"
-                      name="pensionLeaseNumber"
-                      value={formData.pensionLeaseNumber}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="office" className="text-sm font-medium">
-                      Office
-                    </Label>
-                    <Input
-                      id="office"
-                      name="office"
-                      value={formData.office}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="serviceStartDate"
-                      className="text-sm font-medium">
-                      Service Start Date
-                    </Label>
-                    <Input
-                      id="serviceStartDate"
-                      name="serviceStartDate"
-                      type="date"
-                      value={formData.serviceStartDate}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="serviceRetirementDate"
-                      className="text-sm font-medium">
-                      Service Retirement Date
-                    </Label>
-                    <Input
-                      id="serviceRetirementDate"
-                      name="serviceRetirementDate"
-                      type="date"
-                      value={formData.serviceRetirementDate}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label
-                      htmlFor="dateOfFillUp"
-                      className="text-sm font-medium"
-                    >
-                      Date of Fill Up
-                    </Label>
-                    <Input
-                      id="dateOfFillUp"
-                      name="dateOfFillUp"
-                      type="date"
-                      value={formData.dateOfFillUp}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="place" className="text-sm font-medium">
-                      Place
-                    </Label>
-                    <Input
-                      id="place"
-                      name="place"
-                      value={formData.place}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
+              {!isEditMode && (
+                <div className="grid gap-2">
+                  <Label htmlFor="password" className="text-sm font-medium">
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required={!isEditMode}
+                  />
                 </div>
+              )}
+
+              <div className="grid gap-2">
+                <Label htmlFor="profilePic" className="text-sm font-medium">
+                  Profile Picture
+                </Label>
+                <Input
+                  id="profilePic"
+                  name="profilePic"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
+                {isEditMode && currentUser?.profilePic && (
+                  <a
+                    href={currentUser.profilePic}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 text-sm"
+                  >
+                    View Current Profile Picture
+                  </a>
+                )}
               </div>
             </div>
 
@@ -1093,8 +519,8 @@ const Members: React.FC = () => {
                     type="button"
                     variant="destructive"
                     onClick={() => {
-                      if (currentMember) {
-                        handleDelete(currentMember._id);
+                      if (currentUser) {
+                        handleDelete(currentUser._id);
                         resetFormAndCloseModal();
                       }
                     }}

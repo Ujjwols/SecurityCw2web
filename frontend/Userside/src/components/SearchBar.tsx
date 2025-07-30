@@ -1,82 +1,47 @@
 import { useState } from "react";
-import { Search, MapPin, Filter } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface SearchBarProps {
-  onSearch: (query: string, location: string, category: string) => void;
+  onSearch: (query: string) => void;
   searchPlaceholder?: string;
-  locationPlaceholder?: string;
-  categories?: Array<{ value: string; label: string }>;
 }
 
-const SearchBar = ({ 
-  onSearch, 
-  searchPlaceholder = "Search events...", 
-  locationPlaceholder = "Location...",
-  categories = [
-    { value: "all", label: "All Categories" },
-    { value: "technology", label: "Technology" },
-    { value: "music", label: "Music" },
-    { value: "business", label: "Business" },
-    { value: "workshop", label: "Workshop" }
-  ]
+const SearchBar = ({
+  onSearch,
+  searchPlaceholder = "Search events by title or description...",
 }: SearchBarProps) => {
   const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("");
-  const [category, setCategory] = useState("all");
 
-  const handleSearch = () => {
-    onSearch(query, location, category);
+const handleSearch = () => {
+    console.log("Search button clicked, query:", query); // Debug log
+    onSearch(query.trim());
   };
 
   return (
-    <div className="bg-background/95 backdrop-blur-sm border border-border rounded-2xl p-6 shadow-lg">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Search Query */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+    <div className="bg-background/90 backdrop-blur-md border border-border rounded-2xl p-4 sm:p-6 shadow-md transition-all">
+      <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
+        {/* Input */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
           <Input
             placeholder={searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="pl-10"
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            className="pl-10 pr-4 py-2 h-12 rounded-xl focus:ring-2 focus:ring-primary transition-all"
           />
         </div>
 
-        {/* Location */}
-        <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder={locationPlaceholder}
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            className="pl-10"
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-          />
-        </div>
-
-        {/* Category */}
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 z-10" />
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="pl-10">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((cat) => (
-                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Search Button */}
-        <Button onClick={handleSearch} size="lg" className="w-full">
-          <Search className="w-4 h-4 mr-2" />
-          Search
+        {/* Button */}
+        <Button
+          onClick={handleSearch}
+          size="lg"
+          className="h-12 px-6 rounded-xl flex items-center justify-center gap-2 transition-all"
+        >
+          <Search className="w-5 h-5" />
+          <span>Search</span>
         </Button>
       </div>
     </div>

@@ -1,5 +1,5 @@
-const cookieParser = require('cookie-parser');
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -60,6 +60,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: 'Too many authentication attempts, please try again later',
 });
+
 app.use('/api/v1/user/login', authLimiter);
 app.use('/api/v1/user/refresh-token', authLimiter);
 app.use('/api/v1/user/update-password', authLimiter);
@@ -81,7 +82,7 @@ app.use(
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-frontend', 'X-CSRF-Token','x-csrf-token'],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS','PUT'],
   })
 );
 
@@ -112,7 +113,7 @@ app.use((req, res, next) => {
     }
   };
 
-  const fieldsToSanitize = ['username'];
+  const fieldsToSanitize = ['username', 'title', 'description', 'location'];
   sanitize(req.body, fieldsToSanitize);
   sanitize(req.query, fieldsToSanitize);
   sanitize(req.params, fieldsToSanitize);

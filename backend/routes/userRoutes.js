@@ -11,6 +11,7 @@ const {
   updateUserController,
   deleteUserController,
   updatePasswordController,
+  refreshAccessToken,
 } = require("../controller/userController");
 
 const { verifyJWT, restrictTo } = require("../middleware/authMiddleware");
@@ -27,6 +28,8 @@ router.post(
   registerUserController
 );
 
+router.post("/refresh-token", csrfProtection, refreshAccessToken);
+
 router.post("/send-otp", csrfProtection, sendOTPVerificationLogin);
 router.post("/verify-otp", csrfProtection, verifyUserOTPLogin);
 
@@ -37,8 +40,8 @@ router.get("/get-user/:id", verifyJWT, getUserByIdController);
 router.patch(
   "/update-user/:id",
   verifyJWT,
+  csrfProtection,
   upload.fields([{ name: "profilePic", maxCount: 1 }]),
-  
   updateUserController
 );
 router.post(

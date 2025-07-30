@@ -13,8 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import useAuth from '@/hooks/useAuth';
-import api, { initializeAPI } from '@/api/api';
+import { useAuth } from '@/context/AuthContext';
+import api from '@/api/api';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { FileText, Download, X, Trash2, Edit } from 'lucide-react';
 import { AxiosError } from 'axios';
@@ -87,37 +87,30 @@ const Events = () => {
       return;
     }
 
-    initializeAPI().catch((error) => {
-      console.error('Failed to initialize API:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to initialize CSRF token',
-        variant: 'destructive',
-      });
-    });
-
     fetchEvents();
   }, [user, loading, toast]);
 
-  const fetchEvents = async () => {
-    try {
-      const response = await api.get<{ success: boolean; data: Event[]; message: string }>(
-        '/api/v1/event/get-all-event'
-      );
-      setEvents(response.data.data);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof AxiosError
-        ? error.response?.status === 401
-          ? 'Please log in to view events.'
-          : error.response?.data?.message || 'Failed to fetch events'
-        : 'An unexpected error occurred';
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    }
-  };
+    const fetchEvents = async () => {
+      try {
+        const response = await api.get<{
+          success: boolean;
+          data: { events: Event[]; pagination: { currentPage: number; totalPages: number; totalEvents: number; limit: number } };
+          message: string;
+        }>('/event/get-all-event');
+        setEvents(response.data.data.events); // Access the 'events' array
+      } catch (error: unknown) {
+        const errorMessage = error instanceof AxiosError
+          ? error.response?.status === 401
+            ? 'Please log in to view events.'
+            : error.response?.data?.message || 'Failed to fetch events'
+          : 'An unexpected error occurred';
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+    };
 
   const validateFiles = (files: File[], isUpdate: boolean = false): string | null => {
     if (!isUpdate && files.length < 1) {
@@ -194,9 +187,9 @@ const Events = () => {
   const handleDeleteFile = async (eventId: string, fileUrl: string) => {
     if (!window.confirm('Are you sure you want to delete this file?')) return;
     try {
-      const response = await api.delete<{ success: boolean; data: Event; message: string }>(
-        `/api/v1/event/delete-event-file/${eventId}/${encodeURIComponent(fileUrl)}`
-      );
+              const response = await api.delete<{ success: boolean; data: Event; message: string }>(
+          `/event/delete-event-file/${eventId}/${encodeURIComponent(fileUrl)}`
+        );
       setEvents(events.map((event) => (event._id === eventId ? response.data.data : event)));
       toast({
         title: 'File Deleted',
@@ -264,10 +257,10 @@ const Events = () => {
     formData.files.forEach((file) => form.append('files', file));
 
     try {
-      await initializeAPI();
+      // API is already initialized in App.tsx, no need to initialize again here
       if (isEditMode && currentEvent) {
         const response = await api.put<{ success: boolean; data: Event; message: string }>(
-          `/api/v1/event/update-event/${currentEvent._id}`,
+          `/event/update-event/${currentEvent._id}`,
           form,
           {
             headers: {
@@ -282,7 +275,7 @@ const Events = () => {
         });
       } else {
         const response = await api.post<{ success: boolean; data: Event; message: string }>(
-          '/api/v1/event/create-event',
+          '/event/create-event',
           form,
           {
             headers: {
@@ -328,9 +321,9 @@ const Events = () => {
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this event?')) return;
     try {
-      await initializeAPI();
+      // API is already initialized in App.tsx, no need to initialize again here
       const response = await api.delete<{ success: boolean; data: object; message: string }>(
-        `/api/v1/event/delete-event/${id}`
+        `/event/delete-event/${id}`
       );
       setEvents(events.filter((event) => event._id !== id));
       toast({

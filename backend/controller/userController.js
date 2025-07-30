@@ -6,6 +6,7 @@ const { sendOTPController, verifyOTPController } = require("../controller/otpCon
 const { uploadOnCloudinary } = require("../utils/cloudinary");
 const cloudinary = require("cloudinary").v2;
 const { redisClient } = require("../utils/redisClient");
+const ms =require("ms");
 const { body, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
@@ -175,13 +176,13 @@ const verifyUserOTPLogin = asyncHandler(async (req, res) => {
     const options = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: parseInt(process.env.ACCESS_TOKEN_EXPIRY) * 1000,
+      sameSite: "Lax",
+      maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY),
     };
 
     const refreshOptions = {
       ...options,
-      maxAge: parseInt(process.env.REFRESH_TOKEN_EXPIRY) * 1000,
+      maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY),
     };
 
     return res
@@ -287,13 +288,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     const options = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: parseInt(process.env.ACCESS_TOKEN_EXPIRY) * 1000,
+      sameSite: "Lax",
+      maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY) ,
     };
 
     const refreshOptions = {
       ...options,
-      maxAge: parseInt(process.env.REFRESH_TOKEN_EXPIRY) * 1000,
+      maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY),
     };
 
     return res
@@ -331,7 +332,7 @@ const logoutUserController = asyncHandler(async (req, res) => {
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "Strict",
+    sameSite: "Lax",
   };
 
   return res

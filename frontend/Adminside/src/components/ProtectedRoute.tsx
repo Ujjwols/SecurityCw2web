@@ -1,13 +1,7 @@
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 
-import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import useAuth from '@/hooks/useAuth';
-
-interface ProtectedRouteProps {
-  children: ReactNode;
-}
-
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+const ProtectedRoute = () => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -21,16 +15,11 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  if (!user) {
+  if (!user || user.role !== 'admin') {
     return <Navigate to="/login" replace />;
   }
 
-  // Ensure only admin users can access admin routes
-  if (user.role !== 'admin') {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
+  return <Outlet />;
 };
 
 export default ProtectedRoute;

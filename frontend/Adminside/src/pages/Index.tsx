@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
-import useAuth from '@/hooks/useAuth';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { AxiosError } from 'axios';
-import api, { initializeAPI } from '@/api/api';
+import api from '@/api/api';
 
 const Index = () => {
   const [currentPage, setCurrentPage] = useState<'login' | 'forgot' | 'reset'>('login');
@@ -24,85 +24,35 @@ const Index = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [isOtpStep, setIsOtpStep] = useState(false);
   const navigate = useNavigate();
-  const { login, forgotPassword, resetPassword, otpToken } = useAuth();
+  const { user, login, verifyOtp, forgotPassword, resetPassword, otpToken } = useAuth();
   const { toast } = useToast();
 
+  // Redirect if already authenticated
   useEffect(() => {
-    initializeAPI().catch((error) => {
-      console.error('Failed to initialize API:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to initialize CSRF token',
-        variant: 'destructive',
-      });
-    });
-  }, [toast]);
+    if (user && user.role === 'admin') {
+      navigate('/');
+    }
+  }, [user, navigate]);
+
+  // API is already initialized in App.tsx, no need to initialize again here
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form data before request:', formData);
     
     try {
       if (currentPage === 'login') {
         if (!isOtpStep) {
-          // Step 1: Send OTP
-          const { data } = await api.post('/user/send-otp', {
-            email: formData.email,
-            password: formData.password,
-            deliveryMethod: 'email',
-          }, {
-            headers: {
-              'x-admin-frontend': 'true'
-            }
-          });
-          
-          console.log('Response data:', data);
-          if (data.success) {
-            setFormData({ ...formData, token: data.data.token });
+          // Step 1: Send OTP using useAuth hook
+          const success = await login(formData.email, formData.password);
+          if (success) {
             setIsOtpStep(true);
-            toast({
-              title: 'OTP Sent',
-              description: 'OTP has been sent to your email.',
-            });
           }
         } else {
-          // Step 2: Verify OTP
-          const { data } = await api.post('/user/verify-otp', {
-            token: formData.token,
-            otp: formData.otp,
-          }, {
-            headers: {
-              'x-admin-frontend': 'true'
-            }
-          });
-          
-          if (data.success) {
-            // Check if user needs password update
-            if (data.data.needsPasswordUpdate) {
-              toast({
-                title: 'Password Update Required',
-                description: 'Your password is older than 90 days. Please update it.',
-                variant: 'destructive',
-              });
-              navigate(`/update-password/${data.data.userId}`);
-            } else {
-              // Verify the user is an admin
-              if (data.data.loggedInUser && data.data.loggedInUser.role !== 'admin') {
-                toast({
-                  title: 'Access Denied',
-                  description: 'Only admin users can access this interface.',
-                  variant: 'destructive',
-                });
-                navigate('/login');
-                return;
-              }
-              
-              toast({
-                title: 'Login Successful',
-                description: 'Welcome to the admin dashboard.',
-              });
-              navigate('/events');
-            }
+          // Step 2: Verify OTP using useAuth hook
+          const success = await verifyOtp(formData.otp, otpToken || '');
+          if (success) {
+            // The useAuth hook will handle redirection
+            return;
           }
         }
       } else if (currentPage === 'forgot') {
@@ -159,7 +109,7 @@ const Index = () => {
   const renderLoginPage = () => (
     <Card className="w-full max-w-md bg-white/80 backdrop-blur-sm border-blue-200 shadow-lg">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">REST Admin</CardTitle>
+        <CardTitle className="text-2xl font-bold">Schedura Admin</CardTitle>
         <p className="text-muted-foreground">Sign in to your admin account</p>
       </CardHeader>
       <CardContent>
@@ -239,7 +189,7 @@ const Index = () => {
   const renderForgotPasswordPage = () => (
     <Card className="w-full max-w-md bg-white/80 backdrop-blur-sm border-blue-200 shadow-lg">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">REST Admin</CardTitle>
+        <CardTitle className="text-2xl font-bold">Schedura Admin</CardTitle>
         <p className="text-muted-foreground">Enter your email to reset password</p>
       </CardHeader>
       <CardContent>
@@ -277,7 +227,7 @@ const Index = () => {
   const renderResetPasswordPage = () => (
     <Card className="w-full max-w-md bg-white/80 backdrop-blur-sm border-blue-200 shadow-lg">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">REST Admin</CardTitle>
+        <CardTitle className="text-2xl font-bold">Schedura Admin</CardTitle>
         <p className="text-muted-foreground">Reset your password</p>
       </CardHeader>
       <CardContent>
@@ -360,19 +310,6 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {getCurrentPageComponent()}
-        <div className="mt-8 text-center">
-          <div className="flex justify-end space-x-4 mb-4">
-            <button className="text-blue-600 hover:text-blue-800 transition-colors">
-              Contact
-            </button>
-            <button className="text-blue-600 hover:text-blue-800 transition-colors">
-              Help
-            </button>
-          </div>
-          <p className="text-blue-600 text-sm">
-            2025 REST. All Rights Reserved.
-          </p>
-        </div>
       </div>
     </div>
   );

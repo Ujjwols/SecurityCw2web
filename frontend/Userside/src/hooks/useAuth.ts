@@ -20,7 +20,7 @@ const useAuth = () => {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const { data } = await api.get('/user/users/get-current-user');
+        const { data } = await api.get('/user/get-current-user');
         if (data.success) {
           setUser(data.data);
         }

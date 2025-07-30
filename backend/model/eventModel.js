@@ -48,11 +48,6 @@ const eventSchema = new mongoose.Schema(
         message: "You can only upload up to 10 files",
       },
     },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Created by is required"],
-    },
   },
   { timestamps: true }
 );

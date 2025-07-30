@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useAuth from '@/hooks/useAuth';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import api, { initializeAPI } from '@/api/api';
+import api from '@/api/api';
 import { AxiosError } from 'axios';
 
 const VerifyOtp = () => {
@@ -15,16 +15,7 @@ const VerifyOtp = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    initializeAPI().catch((error) => {
-      console.error('Failed to initialize API:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to initialize CSRF token',
-        variant: 'destructive',
-      });
-    });
-  }, [toast]);
+  // API is already initialized in App.tsx, no need to initialize again here
 
   useEffect(() => {
     if (!otpToken) {
@@ -79,7 +70,7 @@ const VerifyOtp = () => {
       <div className="w-full max-w-md">
         <Card className="w-full bg-white/80 backdrop-blur-sm border-blue-200 shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">REST Admin</CardTitle>
+            <CardTitle className="text-2xl font-bold">Schedura Admin</CardTitle>
             <p className="text-muted-foreground">Enter OTP</p>
           </CardHeader>
           <CardContent>

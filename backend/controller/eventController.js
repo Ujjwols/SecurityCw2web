@@ -87,7 +87,7 @@ const createEventController = asyncHandler(async (req, res) => {
 
   return res
     .status(201)
-    .json(new ApiResponse(201, createdEvent, "Event created successfully"));
+    .json(new ApiResponse(201,event,"Event created successfully"));
 });
 
 // Update event (Admin only)
@@ -192,13 +192,9 @@ const updateEventController = asyncHandler(async (req, res) => {
   console.log(`Event ${id} updated by admin ${req.user._id}`);
   await event.save();
 
-//   const updatedEvent = await Event.findById(id)
-//     .populate("createdBy", "username email")
-//     .populate("registeredUsers.userId", "username email");
-
   return res
     .status(200)
-    .json(new ApiResponse(200, updatedEvent, "Event updated successfully"));
+    .json(new ApiResponse(200, event, "Event updated successfully"));
 });
 
 // Get all events (Admin view with pagination and filtering)
@@ -264,7 +260,7 @@ const getEventController = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, responseData, "Event fetched successfully"));
+    .json(new ApiResponse(200, event, "Event fetched successfully"));
 });
 
 // Delete event (Admin only)
@@ -338,13 +334,11 @@ const deleteEventFileController = asyncHandler(async (req, res) => {
   event.files.splice(fileIndex, 1);
   await event.save();
 
-  const updatedEvent = await Event.findById(id)
-    .populate("createdBy", "username email")
-    .populate("registeredUsers.userId", "username email");
+  
 
   return res
     .status(200)
-    .json(new ApiResponse(200, updatedEvent, "File deleted successfully"));
+    .json(new ApiResponse(200, event, "File deleted successfully"));
 });
 
 module.exports = {

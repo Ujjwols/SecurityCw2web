@@ -1,258 +1,322 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api, { initializeAPI } from '../api/api';
 import { useNavigate } from 'react-router-dom';
-import { useToast } from "@/hooks/use-toast";
-import axios, { AxiosError } from 'axios';
+import { useToast } from '@/hooks/use-toast';
+import { AxiosError } from 'axios';
 
-// Type definitions at the top
-interface Notification {
-  id: number;
-  title: string;
-  message: string;
-  read: boolean;
-  timestamp: Date;
+interface User {
+  _id: string;
+  username: string;
+  email: string;
+  role: 'admin' | 'user';
+  profilePic: string;
+  createdAt: string;
 }
 
 interface AuthContextType {
-  isAuthenticated: boolean;
-  login: (email: string, password: string, deliveryMethod: 'sms' | 'email') => Promise<boolean>;
-  verifyOtp: (otp: string, token: string, deliveryMethod: 'sms' | 'email') => Promise<boolean>;
+  user: User | null;
+  loading: boolean;
+  otpToken: string | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  verifyOtp: (otp: string, token: string) => Promise<boolean>;
+  forgotPassword: (email: string) => Promise<boolean>;
+  resetPassword: (otp: string, token: string, newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  theme: 'light' | 'dark';
-  toggleTheme: () => void;
-  notifications: Notification[];
-  dismissNotification: (id: number) => void;
-  addNotification: (notification: Omit<Notification, 'id' | 'read' | 'timestamp'>) => void;
-  otpToken: string | null; // Added to interface
-  deliveryMethod: 'sms' | 'email' | null; // Added to interface
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-
-const API_BASE_URL = import.meta.env.VITE_API_URL;
-
-
-
-// Define hook first for Fast Refresh compatibility
-function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+interface AuthProviderProps {
+  children: ReactNode;
 }
 
-const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+export const AuthProvider = ({ children }: AuthProviderProps) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [otpToken, setOtpToken] = useState<string | null>(null);
-  const [deliveryMethod, setDeliveryMethod] = useState<'sms' | 'email' | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Load theme and check auth status on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || savedTheme === 'light') {
-      setTheme(savedTheme);
-      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
-    }
-  }, []);
+    const fetchUser = async () => {
+      try {
+        // Check if there's a session cookie before making the API call
+        const hasSessionCookie = document.cookie.includes('connect.sid') || 
+                                document.cookie.includes('session') ||
+                                document.cookie.includes('token');
+        
+        if (!hasSessionCookie) {
+          // No session cookie found, user is not logged in
+          setLoading(false);
+          return;
+        }
 
-  const checkAuthStatus = useCallback(async () => {
-    try {
-      console.log('Sending check-auth request to:', `${API_BASE_URL}/api/v1/user/check-auth`);
-      const response = await axios.get(`${API_BASE_URL}/api/v1/user/check-auth`, {
-        withCredentials: true,
-        headers: { 'x-admin-frontend': 'true' },
-      });
-      console.log('Check-auth response:', response.data);
-      if (response.status === 200 && response.data.data) {
-        setIsAuthenticated(true);
+        await initializeAPI();
+        const { data } = await api.get('/user/get-current-user');
+        if (data.success) {
+          // Only allow admin users to access admin interface
+          if (data.data.role === 'admin') {
+            setUser(data.data);
+          } else {
+            toast({
+              title: 'Access Denied',
+              description: 'You do not have admin privileges.',
+              variant: 'destructive',
+            });
+            navigate('/login');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      setIsAuthenticated(false);
-      if (error instanceof AxiosError) {
-        console.error('Check-auth error:', {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.message,
-        });
-      } else {
-        console.error('Check-auth error:', error);
-      }
-    }
-  }, []);
+    };
+    fetchUser();
+  }, [navigate, toast]);
 
-  const login = useCallback(async (email: string, password: string, deliveryMethod: 'sms' | 'email') => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/v1/user/send-otp`,
-        { email, password, deliveryMethod },
-        { withCredentials: true, headers: { 'x-admin-frontend': 'true' } }
+      await initializeAPI();
+      const { data } = await api.post(
+        '/user/send-otp', 
+        { 
+          email, 
+          password,
+          deliveryMethod: 'email'
+        },
+        {
+          headers: {
+            'x-admin-frontend': 'true'
+          }
+        }
       );
 
-      if (response.data.success) {
-        setOtpToken(response.data.data.token);
-        setDeliveryMethod(deliveryMethod);
+      if (data.success) {
+        setOtpToken(data.data.token);
         toast({
           title: 'OTP Sent',
-          description: `An OTP has been sent to your ${deliveryMethod === 'sms' ? 'mobile number' : 'email'} for verification.`,
+          description: 'OTP has been sent to your email.',
         });
-        navigate('/verify-otp');
         return true;
       }
-      
-      toast({
-        title: 'Login Failed',
-        description: response.data.message || 'Invalid email or password',
-        variant: 'destructive',
-      });
       return false;
-    } catch (error) {
-      const message = error instanceof AxiosError 
-        ? error.response?.data?.message || 'An error occurred during login'
-        : 'An unexpected error occurred during login';
-      
-      toast({
-        title: 'Login Failed',
-        description: message,
-        variant: 'destructive',
-      });
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        toast({
+          title: 'Login Failed',
+          description: error.response?.data?.message || 'Please check your credentials and try again.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+      console.error('Login error:', error);
       return false;
     }
-  }, [navigate, toast]);
+  };
 
-  const verifyOtp = useCallback(async (otp: string, token: string, deliveryMethod: 'sms' | 'email') => {
+  const verifyOtp = async (otp: string, token: string) => {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/v1/user/verify-otp`,
-        { otp, token, deliveryMethod },
-        { withCredentials: true, headers: { 'x-admin-frontend': 'true' } }
-      );
+      await initializeAPI();
+      const { data } = await api.post('/user/verify-otp', { 
+        otp, 
+        token 
+      }, {
+        headers: {
+          'x-admin-frontend': 'true'
+        }
+      });
 
-      if (response.data.success) {
-        setIsAuthenticated(true);
+      if (data.success) {
+        // Check if user needs password update
+        if (data.data.needsPasswordUpdate) {
+          toast({
+            title: 'Password Update Required',
+            description: 'Your password is older than 90 days. Please update it.',
+            variant: 'destructive',
+          });
+          navigate(`/update-password/${data.data.userId}`);
+          return true;
+        }
+
+        // Verify the user is an admin
+        if (data.data.loggedInUser && data.data.loggedInUser.role !== 'admin') {
+          toast({
+            title: 'Access Denied',
+            description: 'Only admin users can access this interface.',
+            variant: 'destructive',
+          });
+          navigate('/login');
+          return false;
+        }
+
+        setUser(data.data.loggedInUser);
         setOtpToken(null);
-        setDeliveryMethod(null);
         toast({
           title: 'Login Successful',
-          description: 'Welcome back to REST admin panel',
+          description: 'Welcome to the admin dashboard.',
         });
-        navigate('/dashboard');
+        navigate('/');
         return true;
       }
-      
-      toast({
-        title: 'OTP Verification Failed',
-        description: response.data.message || 'Invalid OTP',
-        variant: 'destructive',
-      });
       return false;
-    } catch (error) {
-      const message = error instanceof AxiosError
-        ? error.response?.data?.message || 'An error occurred during OTP verification'
-        : 'An unexpected error occurred during OTP verification';
-      
-      toast({
-        title: 'OTP Verification Failed',
-        description: message,
-        variant: 'destructive',
-      });
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        toast({
+          title: 'OTP Verification Failed',
+          description: error.response?.data?.message || 'Please check your OTP and try again.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'OTP Verification Failed',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+      console.error('OTP verification error:', error);
       return false;
     }
-  }, [navigate, toast]);
+  };
 
-  const logout = useCallback(async () => {
+  const forgotPassword = async (email: string) => {
     try {
-      await axios.post(
-        `${API_BASE_URL}/api/v1/user/logout`,
-        {},
-        { withCredentials: true, headers: { 'x-admin-frontend': 'true' } }
-      );
-      setIsAuthenticated(false);
-      navigate('/login');
-      toast({
-        title: 'Logged Out Successfully',
-        description: 'You have been logged out of your account.',
+      await initializeAPI();
+      const { data } = await api.post('/user/forgot-password', { 
+        email,
+        deliveryMethod: 'email'
+      }, {
+        headers: {
+          'x-admin-frontend': 'true'
+        }
       });
-    } catch (error) {
-      const message = error instanceof AxiosError
-        ? error.response?.data?.message || 'An error occurred during logout'
-        : 'An unexpected error occurred during logout';
-      
-      toast({
-        title: 'Logout Failed',
-        description: message,
-        variant: 'destructive',
-      });
+      if (data.success) {
+        setOtpToken(data.data.token);
+        toast({
+          title: 'OTP Sent',
+          description: 'Password reset OTP has been sent to your email.',
+        });
+        return true;
+      }
+      return false;
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        toast({
+          title: 'Forgot Password Failed',
+          description: error.response?.data?.message || 'Failed to send OTP.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Forgot Password Failed',
+          description: 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+      console.error('Forgot password error:', error);
+      return false;
     }
-  }, [navigate, toast]);
+  };
 
-  const toggleTheme = useCallback(() => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
-    toast({
-      title: `${newTheme.charAt(0).toUpperCase()}${newTheme.slice(1)} Theme Activated`,
-      description: `The application theme has been changed to ${newTheme} mode.`,
-    });
-  }, [theme, toast]);
+  const resetPassword = async (otp: string, token: string, newPassword: string) => {
+    try {
+      await initializeAPI();
+      const { data } = await api.post('/user/reset-password', { 
+        otp, 
+        token, 
+        newPassword 
+      }, {
+        headers: {
+          'x-admin-frontend': 'true'
+        }
+      });
+      if (data.success) {
+        setOtpToken(null);
+        toast({
+          title: 'Password Reset Successful',
+          description: 'Your password has been reset successfully.',
+        });
+        return true;
+      }
+      return false;
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        toast({
+          title: 'Password Reset Failed',
+          description: error.response?.data?.message || 'Failed to reset password.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Password Reset Failed',
+          description: 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+      console.error('Reset password error:', error);
+      return false;
+    }
+  };
 
-  const dismissNotification = useCallback((id: number) => {
-    setNotifications(prev => prev.map(notif => 
-      notif.id === id ? { ...notif, read: true } : notif
-    ));
-  }, []);
+  const logout = async () => {
+    try {
+      await initializeAPI();
+      const { data } = await api.post('/user/logout');
+      if (data.success) {
+        setUser(null);
+        setOtpToken(null);
+        toast({
+          title: 'Logged Out',
+          description: 'You have been logged out successfully.',
+        });
+        navigate('/login');
+      }
+    } catch (error: unknown) {
+      if (error instanceof AxiosError) {
+        toast({
+          title: 'Logout Failed',
+          description: error.response?.data?.message || 'Failed to log out.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Logout Failed',
+          description: 'An unexpected error occurred.',
+          variant: 'destructive',
+        });
+      }
+      console.error('Logout error:', error);
+    }
+  };
 
-  const addNotification = useCallback((notification: Omit<Notification, 'id' | 'read' | 'timestamp'>) => {
-    const newNotification = {
-      ...notification,
-      id: Date.now(),
-      read: false,
-      timestamp: new Date(),
-    };
-    setNotifications(prev => [newNotification, ...prev]);
-    toast({
-      title: notification.title,
-      description: notification.message,
-    });
-  }, [toast]);
-
-  const contextValue = React.useMemo(() => ({
-    isAuthenticated,
+  const value = {
+    user,
+    loading,
+    otpToken,
     login,
     verifyOtp,
+    forgotPassword,
+    resetPassword,
     logout,
-    theme,
-    toggleTheme,
-    notifications,
-    dismissNotification,
-    addNotification,
-    otpToken,
-    deliveryMethod,
-  }), [
-    isAuthenticated,
-    login,
-    verifyOtp,
-    logout,
-    theme,
-    toggleTheme,
-    notifications,
-    dismissNotification,
-    addNotification,
-    otpToken,
-    deliveryMethod,
-  ]);
+  };
 
   return (
-    <AuthContext.Provider value={contextValue}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-// Named exports for better Fast Refresh compatibility
-export { AuthProvider, useAuth };
+}; 
