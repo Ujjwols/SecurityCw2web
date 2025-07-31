@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar, Mail, Settings, User, Loader2, Camera, Key } from 'lucide-react'; // Add Key icon for Change Password
+import { Calendar, Mail, Settings, User, Loader2, Camera, Key, CreditCard, CheckCircle, XCircle, ArrowRight, Clock, MapPin } from 'lucide-react'; // Add icons for registrations
 import { useToast } from '@/hooks/use-toast';
 import useAuth from '@/hooks/useAuth';
 import api, { initializeAPI } from '@/api/api';
@@ -21,6 +21,31 @@ interface User {
   profilePic: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface Registration {
+  _id: string;
+  status: "registered" | "cancelled" | "attended" | "no_show";
+  registrationDate: string;
+  event: {
+    _id: string;
+    title: string;
+    date: string;
+    time: string;
+    location: string;
+    description: string;
+    price?: number;
+    files?: {
+      url: string;
+      type: string;
+    }[];
+  };
+  payment: {
+    _id: string;
+    amount: number;
+    status: "pending" | "completed" | "failed" | "cancelled";
+    khaltiTransactionId: string;
+  };
 }
 
 const Profile = () => {
@@ -40,6 +65,11 @@ const Profile = () => {
 
   // File state
   const [profilePic, setProfilePic] = useState<File | null>(null);
+
+  // Registration state
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [registrationsLoading, setRegistrationsLoading] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -63,6 +93,7 @@ const Profile = () => {
     });
 
     fetchUserProfile();
+    fetchRegistrations();
   }, [currentUser, authLoading, toast]);
 
   const fetchUserProfile = async () => {
@@ -94,6 +125,34 @@ const Profile = () => {
     }
   };
 
+  const fetchRegistrations = async () => {
+    if (!currentUser?._id) return;
+
+    try {
+      setRegistrationsLoading(true);
+      const response = await api.get<{
+        success: boolean;
+        data: { registrations: Registration[]; pagination: { currentPage: number; totalPages: number; totalRegistrations: number; limit: number } };
+        message: string;
+      }>('/payment/registrations');
+
+      if (response.data.success) {
+        setRegistrations(response.data.data.registrations);
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.data?.message || 'Failed to fetch registrations'
+        : 'An unexpected error occurred';
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setRegistrationsLoading(false);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData({
@@ -122,6 +181,72 @@ const Profile = () => {
         description: 'User ID not found. Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleCancelRegistration = async (registrationId: string) => {
+    if (!window.confirm("Are you sure you want to cancel this registration?")) {
+      return;
+    }
+
+    setCancelling(registrationId);
+    try {
+      const response = await api.post(`/payment/cancel-registration/${registrationId}`);
+
+      if (response.data.success) {
+        setRegistrations(registrations.map(reg =>
+          reg._id === registrationId
+            ? { ...reg, status: "cancelled" as const }
+            : reg
+        ));
+
+        toast({
+          title: "Registration Cancelled",
+          description: "Your registration has been cancelled successfully.",
+        });
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof AxiosError
+        ? error.response?.data?.message || "Failed to cancel registration"
+        : "An unexpected error occurred";
+
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "registered":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Registered</span>;
+      case "cancelled":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Cancelled</span>;
+      case "attended":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Attended</span>;
+      case "no_show":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">No Show</span>;
+      default:
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{status}</span>;
+    }
+  };
+
+  const getPaymentStatusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Paid</span>;
+      case "pending":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>;
+      case "failed":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>;
+      case "cancelled":
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Cancelled</span>;
+      default:
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{status}</span>;
     }
   };
 
@@ -265,10 +390,14 @@ const Profile = () => {
         </Card>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-1">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="w-4 h-4" />
               Profile Information
+            </TabsTrigger>
+            <TabsTrigger value="registrations" className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4" />
+              My Registrations
             </TabsTrigger>
           </TabsList>
           <TabsContent value="profile" className="mt-6">
@@ -305,6 +434,156 @@ const Profile = () => {
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="registrations" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>My Event Registrations</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {registrationsLoading ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Loading your registrations...</p>
+                  </div>
+                ) : registrations.length > 0 ? (
+                  <div className="space-y-6">
+                    {registrations.map((registration) => (
+                      <div key={registration._id} className="border rounded-lg p-6 space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-semibold mb-2">
+                              {registration.event.title}
+                            </h3>
+                            <div className="flex items-center space-x-4 text-sm text-muted-foreground mb-3">
+                              <div className="flex items-center space-x-1">
+                                <Calendar className="w-4 h-4" />
+                                <span>{registration.event.date}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <Clock className="w-4 h-4" />
+                                <span>{registration.event.time}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <MapPin className="w-4 h-4" />
+                                <span>{registration.event.location}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {getStatusBadge(registration.status)}
+                            {getPaymentStatusBadge(registration.payment.status)}
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <div>
+                              <h4 className="font-semibold mb-2">Event Details</h4>
+                              <p className="text-muted-foreground text-sm">
+                                {registration.event.description}
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span>Registration Date:</span>
+                                <span className="font-medium">
+                                  {new Date(registration.registrationDate).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>Amount Paid:</span>
+                                <span className="font-medium">NPR {registration.payment.amount}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>Transaction ID:</span>
+                                <span className="font-mono text-xs">
+                                  {registration.payment.khaltiTransactionId}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className="flex items-center space-x-2">
+                              <CreditCard className="w-5 h-5 text-muted-foreground" />
+                              <span className="font-medium">Payment Status</span>
+                            </div>
+
+                            <div className="space-y-2">
+                              {registration.payment.status === "completed" ? (
+                                <div className="flex items-center space-x-2 text-green-600">
+                                  <CheckCircle className="w-4 h-4" />
+                                  <span className="text-sm">Payment completed successfully</span>
+                                </div>
+                              ) : registration.payment.status === "failed" ? (
+                                <div className="flex items-center space-x-2 text-red-600">
+                                  <XCircle className="w-4 h-4" />
+                                  <span className="text-sm">Payment failed</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-2 text-yellow-600">
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span className="text-sm">Payment pending</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => navigate(`/events/${registration.event._id}`)}
+                              >
+                                <ArrowRight className="w-4 h-4 mr-2" />
+                                View Event Details
+                              </Button>
+
+                              {registration.status === "registered" && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => handleCancelRegistration(registration._id)}
+                                  disabled={cancelling === registration._id}
+                                >
+                                  {cancelling === registration._id ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                      Cancelling...
+                                    </>
+                                  ) : (
+                                    "Cancel Registration"
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-16">
+                    <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Calendar className="w-12 h-12 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-foreground mb-4">
+                      No registrations found
+                    </h3>
+                    <p className="text-muted-foreground mb-6">
+                      You haven't registered for any events yet.
+                    </p>
+                    <Button onClick={() => navigate('/events')}>
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                      Browse Events
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

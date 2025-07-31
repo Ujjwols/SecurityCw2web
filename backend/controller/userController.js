@@ -372,7 +372,17 @@ const getAllUsersController = asyncHandler(async (req, res) => {
 const getUserByIdController = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const user = await User.findById(id).select("-password -refreshToken -passwordHistory");
+  const user = await User.findById(id)
+    .select("-password -refreshToken -passwordHistory")
+    .populate({
+      path: "registeredEvents.event",
+      select: "title date time location description files price",
+    })
+    .populate({
+      path: "registeredEvents.payment",
+      select: "amount status khaltiTransactionId",
+    });
+
   if (!user) {
     throw new ApiError(404, "User not found");
   }

@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Members from "./pages/Members";
 import Events from "./pages/Events";
-import Gallery from "./pages/Gallery";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import VerifyOtp from "./pages/verifyOtp";
@@ -41,7 +40,6 @@ const App = () => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/members" element={<Members />} />
                 <Route path="/events" element={<Events />} />
-                <Route path="/gallery" element={<Gallery />} />
                 <Route path="/logs" element={<AdminLogs/>}/>
               </Route>
 

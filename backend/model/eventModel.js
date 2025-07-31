@@ -34,6 +34,12 @@ const eventSchema = new mongoose.Schema(
       trim: true,
       minlength: [3, "Location must be at least 3 characters"],
     },
+    price: {
+      type: Number,
+      required: [true, "Price is required"],
+      min: [0, "Price cannot be negative"],
+      default: 0,
+    },
     files: {
       type: [
         {

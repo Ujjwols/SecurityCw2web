@@ -26,6 +26,7 @@ interface Event {
   time?: string;
   location?: string;
   description: string;
+  price?: number;
   files?: {
     url: string;
     type: string;
@@ -47,6 +48,7 @@ const Events = () => {
     time: '',
     location: '',
     description: '',
+    price: 0,
     files: [] as File[],
   });
   const { user, loading } = useAuth();
@@ -254,6 +256,7 @@ const Events = () => {
     if (formData.date) form.append('date', formData.date);
     if (formData.time) form.append('time', formData.time);
     if (formData.location) form.append('location', formData.location);
+    form.append('price', formData.price.toString());
     formData.files.forEach((file) => form.append('files', file));
 
     try {
@@ -312,6 +315,7 @@ const Events = () => {
       time: event.time || '',
       location: event.location || '',
       description: event.description,
+      price: event.price || 0,
       files: [],
     });
     setIsEditMode(true);
@@ -352,6 +356,7 @@ const Events = () => {
       time: '',
       location: '',
       description: '',
+      price: 0,
       files: [],
     });
     setCurrentEvent(null);
@@ -393,6 +398,7 @@ const Events = () => {
                 <TableHead>Date</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Location</TableHead>
+                <TableHead>Price</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Files</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -405,6 +411,7 @@ const Events = () => {
                   <TableCell>{event.date || 'N/A'}</TableCell>
                   <TableCell>{event.time || 'N/A'}</TableCell>
                   <TableCell>{event.location || 'N/A'}</TableCell>
+                  <TableCell>NPR {event.price || 0}</TableCell>
                   <TableCell className="max-w-xs truncate">{event.description}</TableCell>
                   <TableCell>
                     {event.files && event.files.length > 0 ? (
@@ -544,6 +551,21 @@ const Events = () => {
                   onChange={handleInputChange}
                   className="min-h-[100px]"
                   required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label htmlFor="price" className="text-sm font-medium">
+                  Price:
+                </label>
+                <Input
+                  id="price"
+                  name="price"
+                  type="number"
+                  value={formData.price}
+                  onChange={handleInputChange}
+                  className="h-10"
+                  min="0"
                 />
               </div>
 

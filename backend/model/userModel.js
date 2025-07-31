@@ -56,6 +56,28 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    registeredEvents: [
+      {
+        event: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Event",
+          required: true,
+        },
+        registrationDate: {
+          type: Date,
+          default: Date.now,
+        },
+        status: {
+          type: String,
+          enum: ["registered", "cancelled", "attended", "no_show"],
+          default: "registered",
+        },
+        payment: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Payment",
+        },
+      },
+    ],
   },
   { timestamps: true }
 );

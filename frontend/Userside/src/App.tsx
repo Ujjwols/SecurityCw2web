@@ -9,7 +9,6 @@ import Footer from "@/components/Footer";
 import Home from "./pages/Home";
 import Events from "./pages/Events";
 import EventDetail from "./pages/EventDetail";
-import Gallery from "./pages/Gallery";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -17,6 +16,7 @@ import UpdatePassword from "./pages/updatePassword";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ChangePassword from "./pages/ChangePassword";
+import PaymentSuccess from "./pages/PaymentSuccess";
 
 import { initializeAPI } from "./api/api";  
 
@@ -39,7 +39,6 @@ const App = () => {
                 <Route path="/" element={<Home />} />
                 <Route path="/events" element={<Events />} />
                 <Route path="/event/:id" element={<EventDetail />} />
-                <Route path="/gallery" element={<Gallery />} />
                 <Route
                   path="/profile"
                   element={
@@ -52,6 +51,7 @@ const App = () => {
                 <Route path="/login" element={<Login />} />
                 <Route path="/update-password/:userId" element={<ChangePassword />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/payment/success" element={<PaymentSuccess />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>

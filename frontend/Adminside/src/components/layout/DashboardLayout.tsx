@@ -86,12 +86,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 <span>Events</span>
               </Link>
             </li>
-            <li>
-              <Link to="/gallery" className={`flex items-center text-xl ${isActive('/gallery')}`}>
-                <ImageIcon className="w-5 h-5 mr-3" />
-                <span>Gallery</span>
-              </Link>
-            </li>
              <li>
               <Link to="/logs" className={`flex items-center text-xl ${isActive('/logs')}`}>
                 <FileTextIcon className="w-5 h-5 mr-3" />

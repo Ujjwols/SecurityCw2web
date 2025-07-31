@@ -62,7 +62,7 @@ const authLimiter = rateLimit({
   message: 'Too many authentication attempts, please try again later',
 });
 
-app.use('/api/v1/user/login', authLimiter);
+app.use('/api/v1/user/send-otp', authLimiter);
 app.use('/api/v1/user/refresh-token', authLimiter);
 app.use('/api/v1/user/update-password', authLimiter);
 
@@ -117,12 +117,15 @@ app.use((req, res, next) => {
   };
 
   const fieldsToSanitize = ['username', 'title', 'description', 'location'];
-  sanitize(req.body, fieldsToSanitize);
+  sanitize(req.body, fieldsToSanitize); 
   sanitize(req.query, fieldsToSanitize);
   sanitize(req.params, fieldsToSanitize);
 
   next();
 });
+
+
+
 app.use(express.static('public'));
 
 
@@ -132,8 +135,10 @@ app.use('/api/v1/csrf-token', csrfProtection, (req, res) => {
 
 const userRouter = require('./routes/userRoutes');
 const eventRouter = require('./routes/eventRoutes');
+const paymentRouter = require('./routes/paymentRoutes');
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/event', eventRouter);
+app.use('/api/v1/payment', paymentRouter);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;

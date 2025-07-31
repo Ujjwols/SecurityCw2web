@@ -35,6 +35,11 @@ const createEventController = asyncHandler(async (req, res) => {
       .isLength({ min: 3 })
       .withMessage("Location must be at least 3 characters")
       .run(req),
+    body("price")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Price must be a non-negative number")
+      .run(req),
   ]);
 
   const errors = validationResult(req);
@@ -42,7 +47,7 @@ const createEventController = asyncHandler(async (req, res) => {
     throw new ApiError(400, errors.array().map((err) => err.msg).join("; "));
   }
 
-  const { title, description, date, time, location, capacity } = req.body;
+  const { title, description, date, time, location, capacity, price } = req.body;
 
   // Check for existing event by title
   const existingEvent = await Event.findOne({ title: title.toLowerCase() });
@@ -82,6 +87,7 @@ const createEventController = asyncHandler(async (req, res) => {
     date,
     time,
     location,
+    price: price || 0,
     files,
   });
 
@@ -125,6 +131,11 @@ const updateEventController = asyncHandler(async (req, res) => {
       .isLength({ min: 3 })
       .withMessage("Location must be at least 3 characters")
       .run(req),
+    body("price")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Price must be a non-negative number")
+      .run(req),
   ]);
 
   const errors = validationResult(req);
@@ -132,14 +143,14 @@ const updateEventController = asyncHandler(async (req, res) => {
     throw new ApiError(400, errors.array().map((err) => err.msg).join("; "));
   }
 
-  const { title, description, date, time, location, capacity } = req.body;
+  const { title, description, date, time, location, capacity, price } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError(400, "Invalid event ID");
   }
 
   // Check if at least one field is provided
-  if (!title && !description && !date && !time && !location && (!req.files || req.files.length === 0)) {
+  if (!title && !description && !date && !time && !location && !price && (!req.files || req.files.length === 0)) {
     throw new ApiError(400, "At least one field must be provided for update");
   }
 
@@ -160,6 +171,7 @@ const updateEventController = asyncHandler(async (req, res) => {
   if (date) event.date = date;
   if (time) event.time = time;
   if (location) event.location = location;
+  if (price !== undefined) event.price = price;
 
   // Validate and upload new files if provided
   if (req.files && req.files.length > 0) {

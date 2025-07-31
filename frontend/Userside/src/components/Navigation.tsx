@@ -12,7 +12,6 @@ const Navigation = () => {
   const navItems = [
     { path: "/", label: "Home", icon: Calendar },
     { path: "/events", label: "Events", icon: Calendar },
-    { path: "/gallery", label: "Gallery", icon: Camera },
     { path: "/profile", label: "Profile", icon: User },
   ];
 

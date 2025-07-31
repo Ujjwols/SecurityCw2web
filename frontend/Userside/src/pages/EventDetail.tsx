@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Calendar, MapPin, Users, Clock, Tag, Mail, ArrowLeft, Share2, Heart, Loader2 } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { Calendar, MapPin, Users, Clock, Tag, Mail, ArrowLeft, Share2, Heart, Loader2, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import api, { initializeAPI } from "@/api/api";
 import { AxiosError } from "axios";
+import useAuth from "@/hooks/useAuth";
 
 interface Event {
   _id: string;
@@ -15,6 +17,7 @@ interface Event {
   date: string;
   time: string;
   location: string;
+  price?: number;
   files?: {
     url: string;
     type: string;
@@ -24,11 +27,16 @@ interface Event {
 
 const EventDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [eventPrice, setEventPrice] = useState(0);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -41,6 +49,7 @@ const EventDetail = () => {
         );
         if (response.data.success) {
           setEvent(response.data.data);
+          setEventPrice(response.data.data.price || 0);
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof AxiosError
@@ -60,13 +69,76 @@ const EventDetail = () => {
   }, [id, toast]);
 
   const handleRegister = () => {
-    setIsRegistered(!isRegistered);
-    toast({
-      title: isRegistered ? "Registration Cancelled" : "Successfully Registered!",
-      description: isRegistered 
-        ? "You have been removed from this event."
-        : "You have been registered for this event. Check your email for confirmation.",
-    });
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please log in to register for this event.",
+        variant: "destructive",
+      });
+      navigate('/login');
+      return;
+    }
+
+    setShowPaymentDialog(true);
+  };
+
+  const handlePayment = async () => {
+    if (!user || !event) return;
+
+    setPaymentLoading(true);
+    try {
+      await initializeAPI();
+      const response = await api.post('/payment/initiate', {
+        eventId: event._id,
+        amount: 0, // Backend determines amount
+      });
+
+      if (response.data.success) {
+        const { paymentId, paymentUrl, transactionId, purchaseOrderId, status } = response.data.data;
+        console.log("Storing payment data in sessionStorage:", {
+          pidx: transactionId,
+          paymentId,
+          purchaseOrderId,
+          status
+        });
+        sessionStorage.setItem("paymentData", JSON.stringify({
+          pidx: transactionId, // Khalti pidx
+          paymentId,
+          purchaseOrderId,
+          amount: response.data.data.amount
+        }));
+        console.log("sessionStorage after set:", sessionStorage.getItem("paymentData"));
+        
+        // Redirect to Khalti payment page
+        window.location.href = paymentUrl;
+      }
+    } catch (error: unknown) {
+      console.error("Payment initialization error:", error);
+      
+      let errorMessage = "Payment initialization failed. Please try again.";
+      
+      if (error instanceof AxiosError) {
+        if (error.response?.status === 503) {
+          errorMessage = "Payment service is temporarily unavailable. Please try again in a few moments.";
+        } else if (error.response?.status === 500) {
+          errorMessage = "Payment service error. Please try again later.";
+        } else if (error.response?.status === 400) {
+          errorMessage = error.response?.data?.message || "Invalid payment request.";
+        } else if (!error.response) {
+          errorMessage = "Network error. Please check your connection and try again.";
+        } else {
+          errorMessage = error.response?.data?.message || "Payment initialization failed";
+        }
+      }
+      
+      toast({
+        title: 'Payment Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setPaymentLoading(false);
+    }
   };
 
   const handleShare = () => {
@@ -261,7 +333,7 @@ const EventDetail = () => {
                 <CardHeader>
                   <div className="text-center">
                     <div className="text-3xl font-bold text-foreground mb-2">
-                      Free
+                      NPR {event?.price || 0}
                     </div>
                     <p className="text-muted-foreground">per person</p>
                   </div>
@@ -272,8 +344,21 @@ const EventDetail = () => {
                     variant={isRegistered ? "outline" : "default"}
                     size="lg" 
                     className="w-full"
+                    disabled={paymentLoading}
                   >
-                    {isRegistered ? "Cancel Registration" : "Register Now"}
+                    {paymentLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : isRegistered ? (
+                      "Cancel Registration"
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4 mr-2" />
+                        Register Now
+                      </>
+                    )}
                   </Button>
                   
                   <div className="flex space-x-2">
@@ -321,6 +406,79 @@ const EventDetail = () => {
           </div>
         </div>
       </section>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Complete Registration
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CreditCard className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">
+                Register for {event?.title}
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                Complete your registration by making a payment of NPR {event?.price || 0}
+              </p>
+            </div>
+
+            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="flex justify-between">
+                <span>Event Price:</span>
+                <span className="font-medium">NPR {event?.price || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tax:</span>
+                <span className="font-medium">NPR 0</span>
+              </div>
+              <div className="border-t pt-2 flex justify-between font-semibold">
+                <span>Total:</span>
+                <span>NPR {event?.price || 0}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Button 
+                onClick={handlePayment}
+                className="w-full"
+                disabled={paymentLoading}
+              >
+                {paymentLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing Payment...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Pay with Khalti
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                onClick={() => setShowPaymentDialog(false)}
+                className="w-full"
+                disabled={paymentLoading}
+              >
+                Cancel
+              </Button>
+            </div>
+
+            <div className="text-xs text-muted-foreground text-center">
+              You will be redirected to Khalti's secure payment gateway to complete your transaction.
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
