@@ -267,10 +267,6 @@ const Profile = () => {
                         <span className="text-sm text-muted-foreground">Email:</span>
                         <p className="font-medium">{user.email}</p>
                       </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Role:</span>
-                        <p className="font-medium capitalize">{user.role}</p>
-                      </div>
                     </div>
                   </div>
                   <div>
@@ -283,10 +279,6 @@ const Profile = () => {
                       <div>
                         <span className="text-sm text-muted-foreground">Last Updated:</span>
                         <p className="font-medium">{new Date(user.updatedAt).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">User ID:</span>
-                        <p className="font-medium text-xs">{user._id}</p>
                       </div>
                     </div>
                   </div>

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Mail, Lock, Eye, EyeOff, Camera } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Camera, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { isAxiosError } from 'axios';
 import api, { initializeAPI } from '../api/api';
@@ -23,6 +23,13 @@ const Register = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [passwordValidations, setPasswordValidations] = useState({
+    minLength: false,
+    capitalLetter: false,
+    number: false,
+    symbol: false,
+  });
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,6 +51,35 @@ const Register = () => {
       setFormData({ ...formData, profilePic: file });
     }
   };
+
+  const handlePasswordChange = (value: string) => {
+    setFormData({ ...formData, password: value });
+    setPasswordValidations({
+      minLength: value.length >= 6,
+      capitalLetter: /[A-Z]/.test(value),
+      number: /\d/.test(value),
+      symbol: /[!@#$%^&*]/.test(value),
+    });
+  };
+
+  const passwordStrengthScore = Object.values(passwordValidations).filter(Boolean).length;
+  const strengthColor =
+    passwordStrengthScore === 0
+      ? 'bg-gray-200'
+      : passwordStrengthScore <= 2
+      ? 'bg-red-500'
+      : passwordStrengthScore === 3
+      ? 'bg-yellow-500'
+      : 'bg-green-500';
+
+  const strengthMessage =
+    passwordStrengthScore === 0
+      ? 'Too short'
+      : passwordStrengthScore <= 2
+      ? 'Weak password'
+      : passwordStrengthScore === 3
+      ? 'Moderate password'
+      : 'Strong password';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +116,7 @@ const Register = () => {
           status: error.response?.status,
           headers: error.response?.headers,
           data: error.response?.data,
-          requestHeaders: error.config?.headers, // Log request headers
+          requestHeaders: error.config?.headers,
         });
       } else {
         toast.error('An unexpected error occurred');
@@ -130,6 +166,7 @@ const Register = () => {
                 />
               </div>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
               <div className="relative">
@@ -144,6 +181,7 @@ const Register = () => {
                 />
               </div>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
@@ -159,6 +197,7 @@ const Register = () => {
                 />
               </div>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -169,7 +208,7 @@ const Register = () => {
                   placeholder="Create a password"
                   className="pl-10 pr-10"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) => handlePasswordChange(e.target.value)}
                   required
                 />
                 <button
@@ -180,7 +219,35 @@ const Register = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {formData.password && (
+                <div className="space-y-2">
+                  <div className="h-2 rounded-full overflow-hidden bg-gray-200">
+                    <div className={`h-full ${strengthColor}`} style={{ width: `${passwordStrengthScore * 25}%` }} />
+                  </div>
+                  <p className="text-sm text-gray-600">{strengthMessage}</p>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className={`w-4 h-4 ${passwordValidations.minLength ? "text-green-500" : "text-gray-400"}`} />
+                      At least 6 characters
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className={`w-4 h-4 ${passwordValidations.capitalLetter ? "text-green-500" : "text-gray-400"}`} />
+                      One uppercase letter
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className={`w-4 h-4 ${passwordValidations.number ? "text-green-500" : "text-gray-400"}`} />
+                      One number
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className={`w-4 h-4 ${passwordValidations.symbol ? "text-green-500" : "text-gray-400"}`} />
+                      One special character (!@#$%^&*)
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <div className="relative">
@@ -203,6 +270,7 @@ const Register = () => {
                 </button>
               </div>
             </div>
+
             <Button type="submit" className="w-full" disabled={isLoading || !isInitialized}>
               {isLoading ? 'Registering...' : 'Create Account'}
             </Button>
