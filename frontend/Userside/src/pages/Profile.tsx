@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // Add useNavigate import
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar, Mail, Settings, User, Loader2, Camera } from 'lucide-react';
+import { Calendar, Mail, Settings, User, Loader2, Camera, Key } from 'lucide-react'; // Add Key icon for Change Password
 import { useToast } from '@/hooks/use-toast';
 import useAuth from '@/hooks/useAuth';
 import api, { initializeAPI } from '@/api/api';
@@ -29,6 +30,7 @@ const Profile = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate(); // Initialize useNavigate
 
   // Form state
   const [formData, setFormData] = useState({
@@ -109,6 +111,18 @@ const Profile = () => {
 
   const handleEditProfile = () => {
     setIsEditModalOpen(true);
+  };
+
+  const handleChangePassword = () => {
+    if (user?._id) {
+      navigate(`/update-password/${user._id}`);
+    } else {
+      toast({
+        title: 'Error',
+        description: 'User ID not found. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,6 +225,14 @@ const Profile = () => {
                 <Button variant="outline" className="w-full md:w-auto" onClick={handleEditProfile}>
                   <Settings className="w-4 h-4 mr-2" />
                   Edit Profile
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full md:w-auto mt-2"
+                  onClick={handleChangePassword}
+                >
+                  <Key className="w-4 h-4 mr-2" />
+                  Change Password
                 </Button>
                 <Button variant="destructive" className="w-full md:w-auto mt-2" onClick={logout}>
                   Logout

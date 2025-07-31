@@ -16,6 +16,7 @@ import Register from "./pages/Register";
 import UpdatePassword from "./pages/updatePassword";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ChangePassword from "./pages/ChangePassword";
 
 import { initializeAPI } from "./api/api";  
 
@@ -49,6 +50,7 @@ const App = () => {
                 />
                 <Route path="/update-password/:userId" element={<UpdatePassword />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/update-password/:userId" element={<ChangePassword />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
