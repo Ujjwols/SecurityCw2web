@@ -8,12 +8,14 @@ const morgan = require('morgan');
 const csrfProtection = require('./middleware/csrfProtection');
 const { expressCspHeader, INLINE, NONE, SELF } = require('express-csp-header');
 const winstonLogger = require('./middleware/winstonLogger');
+const mongoSanitize = require('express-mongo-sanitize');
+
 
 const app = express();
 
 const allowedOrigins = [
   process.env.CORS_ORIGIN || 'http://localhost:3000',
-  process.env.USER_CORS_ORIGIN || 'http://localhost:5173',
+  process.env.USER_CORS_ORIGIN || 'http://192.168.166.1:5173',
 ].filter(Boolean);
 
 app.use(cookieParser());
@@ -100,12 +102,15 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '16kb' }));
 app.use(express.urlencoded({ extended: true, limit: '16kb' }));
 
+// app.use(mongoSanitize());
+
 app.use((req, res, next) => {
   const sanitize = (obj, fieldsToSanitize) => {
     if (!obj) return;
     for (const key in obj) {
       if (fieldsToSanitize.includes(key) && typeof obj[key] === 'string') {
         const original = obj[key];
+        obj[key] = mongoSanitize.sanitize(obj[key]);
         obj[key] = xss(obj[key]);
         if (original !== obj[key]) {
           console.log(`Sanitized ${key}: "${original}" -> "${obj[key]}"`);

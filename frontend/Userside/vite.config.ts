@@ -19,4 +19,10 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+   build: {
+    sourcemap: false, // disable source maps in production build
+  },
+  esbuild: {
+    sourcemap: false, // disable source maps for esbuild (dev and build)
+  },
 }));

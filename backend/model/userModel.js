@@ -82,7 +82,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Encrypt email and refreshToken fields
+// Encrypt  refreshToken fields
 userSchema.plugin(encrypt, {
   encryptionKey: process.env.DB_ENCRYPTION_KEY,
   signingKey: process.env.DB_SIGNING_KEY,

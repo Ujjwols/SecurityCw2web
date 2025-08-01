@@ -14,12 +14,6 @@ class KhaltiPayment {
       console.error("Khalti configuration error: Missing KHALTI_SECRET_KEY or KHALTI_PUBLIC_KEY");
       throw new Error("Khalti API keys are not configured. Please check your environment variables.");
     }
-    
-    console.log("Khalti configuration loaded:", {
-      baseUrl: this.baseUrl,
-      publicKey: this.publicKey ? `${this.publicKey.substring(0, 8)}...` : 'NOT_SET',
-      secretKey: this.secretKey ? 'SET' : 'NOT_SET'
-    });
   }
 
   // Generate a unique transaction ID

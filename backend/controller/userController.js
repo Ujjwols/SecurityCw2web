@@ -11,6 +11,7 @@ const ms =require("ms");
 const { body, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const {validateUserFiles} = require("../utils/valiadateUploadedFiles");
 
 
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -40,6 +41,7 @@ const registerUserController = asyncHandler(async (req, res) => {
   await Promise.all([
     body('username').trim().escape().isLength({ min: 3 }).withMessage('Username must be at least 3 characters').run(req),
     body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
+    
     body('password').matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/)
       .withMessage('Password must be at least 6 characters with one capital letter, one number, and one special character').run(req),
   ]);
@@ -62,6 +64,8 @@ const registerUserController = asyncHandler(async (req, res) => {
   if (!email.toLowerCase().endsWith("@gmail.com")) {
     throw new ApiError(400, "Email must be a valid Gmail address");
   }
+
+  validateUserFiles(req.files);
 
   let profilePicUrl = "";
   if (req.files?.profilePic) {
@@ -394,12 +398,18 @@ const getUserByIdController = asyncHandler(async (req, res) => {
 
 const updateUserController = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const updateData = req.body;
+  const updateData = { ...req.body };
 
-  delete updateData.password;
+  // Always remove these sensitive fields
+ 
   delete updateData.refreshToken;
-  delete updateData.role;
   delete updateData.passwordHistory;
+
+  // Only allow role update if requester is admin
+  if (req.user.role !== "admin") {
+    delete updateData.role;
+    delete updateData.password;
+  }
 
   const user = await User.findById(id);
   if (!user) {
@@ -435,6 +445,7 @@ const updateUserController = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, updatedUser, "User updated successfully"));
 });
+
 
 const deleteUserController = asyncHandler(async (req, res) => {
   const { id } = req.params;

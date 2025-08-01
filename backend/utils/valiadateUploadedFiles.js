@@ -59,12 +59,9 @@ function validateUserFiles(files) {
       "image/png",
       "image/gif",
       "image/webp",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
     if (!allowedTypes.includes(additionalFile.mimetype)) {
-      throw new ApiError(400, "Additional file must be an image, PDF, or Word document");
+      throw new ApiError(400, "Additional file must be an image");
     }
   }
 }
