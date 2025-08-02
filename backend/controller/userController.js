@@ -10,6 +10,7 @@ const { redisClient } = require("../utils/redisClient");
 const ms =require("ms");
 const { body, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
+const xss = require("xss-clean");
 const bcrypt = require("bcrypt");
 const {validateUserFiles} = require("../utils/valiadateUploadedFiles");
 
@@ -230,7 +231,7 @@ const updatePasswordController = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
-  if (user.passwordAttempts >= 3) {
+  if (user.passwordAttempts >= 5) {
     throw new ApiError(429, "Maximum password update attempts reached for this session");
   }
 
@@ -397,15 +398,29 @@ const getUserByIdController = asyncHandler(async (req, res) => {
 });
 
 const updateUserController = asyncHandler(async (req, res) => {
+  await Promise.all([
+    body('username').trim().escape().isLength({ min: 3 }).withMessage('Username must be at least 3 characters').run(req),
+    body('email').isEmail().normalizeEmail().withMessage('Invalid email format').run(req),
+  
+  ]);
+
+  console.log('Request body:', req.body); // Log for debugging
+  console.log('Request files:', req.files);
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, errors.array().map(err => err.msg).join('; '));
+  }
+
+ 
   const { id } = req.params;
   const updateData = { ...req.body };
 
-  // Always remove these sensitive fields
- 
+  // Always remove sensitive fields from update
   delete updateData.refreshToken;
   delete updateData.passwordHistory;
 
-  // Only allow role update if requester is admin
+  // Only admin can update role or password
   if (req.user.role !== "admin") {
     delete updateData.role;
     delete updateData.password;
@@ -416,6 +431,7 @@ const updateUserController = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
+  // Handle profile picture upload if present
   if (req.files?.profilePic) {
     try {
       if (user.profilePic) {

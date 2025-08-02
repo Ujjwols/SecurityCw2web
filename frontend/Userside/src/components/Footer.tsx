@@ -13,7 +13,7 @@ const Footer = () => {
                 <Calendar className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                EventHub
+                Schedura
               </span>
             </div>
             <p className="text-muted-foreground mb-4 max-w-md">
@@ -85,7 +85,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li className="flex items-center space-x-2 text-muted-foreground">
                 <Mail className="w-4 h-4" />
-                <span>info@eventhub.com</span>
+                <span>info@Schedura.com</span>
               </li>
               <li className="flex items-center space-x-2 text-muted-foreground">
                 <Phone className="w-4 h-4" />
@@ -100,7 +100,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-border mt-8 pt-8 text-center text-muted-foreground">
-          <p>&copy; 2024 EventHub. All rights reserved.</p>
+          <p>&copy; 2024 Schedura. All rights reserved.</p>
         </div>
       </div>
     </footer>

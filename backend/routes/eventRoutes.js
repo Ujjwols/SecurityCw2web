@@ -10,17 +10,13 @@ const {
   updateEventController,
   deleteEventController,
   deleteEventFileController,
-//   registerForEventController,
-//   cancelEventRegistrationController,
-} = require("../controller/eventcontroller");
+} = require("../controller/eventController");
 
 // Public routes
 router.get("/get-all-event", getAllEventController);
 router.get("/get-event/:id", getEventController);
 
-// Protected routes (require authentication)
-// router.post("/register-event/:id", verifyJWT, csrfProtection, registerForEventController);
-// router.post("/cancel-event-registration/:id", verifyJWT, csrfProtection, cancelEventRegistrationController);
+
 
 // Admin-only routes
 router.post(

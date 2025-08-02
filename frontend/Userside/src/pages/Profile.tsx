@@ -367,7 +367,7 @@ const Profile = () => {
                 <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-4">
                   <div>
                     <h1 className="text-3xl font-bold text-foreground mb-2">{user.username}</h1>
-                    <p className="text-muted-foreground mb-4">EventHub {user.role}</p>
+                    <p className="text-muted-foreground mb-4">Schedura {user.role}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">

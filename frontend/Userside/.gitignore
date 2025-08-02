@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+root.crt
+root.key
+root.srl
+server.crt
+server.csr
+server.key
+
+certs

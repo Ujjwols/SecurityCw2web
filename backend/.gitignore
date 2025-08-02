@@ -3,3 +3,12 @@ node_modules
 .env.development
 
 .env.production
+
+root.crt
+root.key
+root.srl
+server.crt
+server.csr
+server.key
+
+certs
